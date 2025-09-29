@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
     
     <style>
+        /* ... (CSS-Stile beibehalten) ... */
         body { box-sizing: border-box; }
         .scanner-line { animation: scan 2s linear infinite; }
         @keyframes scan {
@@ -564,6 +565,7 @@
         let codeReader = null;
         let currentStocktaking = null;
         let currentFileSha = null;
+        let syncActive = true; // NEU: Flag, um 401-Fehlerzustand zu speichern
 
         // =======================================================
         // HELPER FUNKTIONEN
@@ -626,10 +628,12 @@
             if (CONFIG.TOKEN === 'IHR_PERSOENLICHER_GITHUB_TOKEN') {
                 showNotification('GitHub-Synchronisierung deaktiviert: Bitte TOKEN in der Konfiguration setzen.', 'info');
                 document.getElementById('sync-status').textContent = '⚠️ Konfiguration fehlt';
+                syncActive = false; // Synchronisierung deaktivieren
                 return null;
             }
 
             document.getElementById('sync-status').textContent = '🔄 Lädt...';
+            syncActive = true; // Setze aktiv vor dem Versuch
             try {
                 const response = await fetch(BASE_URL, {
                     method: 'GET',
@@ -646,10 +650,17 @@
                     return [];
                 }
                 
+                if (response.status === 401) {
+                    syncActive = false; // Fehler-Flag setzen, da Token falsch
+                    document.getElementById('sync-status').textContent = '❌ Fehler 401 (Token/Repo)';
+                    showNotification('Dauerhafter Fehler: HTTP 401. Bitte **TOKEN und REPO** prüfen. Speichern ist **deaktiviert**.', 'error', 15000);
+                    // Den Fehler werfen, um den regulären Ablauf abzubrechen und den Catch-Block zu triggern
+                    throw new Error(`HTTP-Fehler beim Laden! Status: 401.`);
+                }
+                
                 if (!response.ok) {
-                    // Der 401 Fehler tritt hier auf, wenn der Token falsch ist
-                    document.getElementById('sync-status').textContent = '❌ Fehler (Token/Repo)';
-                    throw new Error(`HTTP-Fehler! Status: ${response.status}. Prüfe Token/Repo-Name`);
+                    document.getElementById('sync-status').textContent = '❌ Fehler beim Laden';
+                    throw new Error(`HTTP-Fehler! Status: ${response.status}.`);
                 }
 
                 const data = await response.json();
@@ -661,11 +672,11 @@
                 return JSON.parse(content);
             } catch (error) {
                 console.error('Fehler beim Laden von GitHub:', error);
-                // WICHTIG: Fehler 401-Meldung, wie vom Benutzer gesehen
-                if (error.message.includes('401')) {
-                     showNotification('Fehler beim Laden von GitHub: HTTP-Fehler! Status: 401. Prüfe Token/Repo-Name', 'error', 10000);
-                } else {
-                    showNotification(`Fehler beim Laden von GitHub: ${error.message}`, 'error', 5000);
+                
+                // Nur wenn syncActive nicht bereits auf false gesetzt wurde (z.B. bei Netzwerk-Fehlern != 401)
+                if (syncActive) { 
+                    document.getElementById('sync-status').textContent = '⚠️ Lokaler Modus';
+                    showNotification(`Fehler beim Laden. Lokaler Modus: ${error.message}`, 'info', 5000);
                 }
                 return null;
             }
@@ -674,6 +685,12 @@
         async function saveInventoryToCloud() {
             if (CONFIG.TOKEN === 'IHR_PERSOENLICHER_GITHUB_TOKEN') {
                 showNotification('Speichern in der Cloud ignoriert. Token fehlt.', 'info');
+                return;
+            }
+            
+            // NEU: Prüfung des syncActive-Flags
+            if (!syncActive) {
+                showNotification('Speichern blockiert: Fehler 401 beim Laden. Bitte **Token/Repo** korrigieren.', 'error', 7000);
                 return;
             }
 
@@ -685,12 +702,12 @@
             const payload = {
                 message: `Update inventory via Pyrotechnik Manager: ${new Date().toISOString()}`,
                 content: base64Content,
-                sha: currentFileSha // Nur notwendig für Updates, nicht für die erste Erstellung
+                sha: currentFileSha // Wird für Updates benötigt, ist null bei Erstellung
             };
 
             try {
                 const response = await fetch(BASE_URL, {
-                    method: currentFileSha ? 'PUT' : 'PUT', // PUT wird für Erstellung und Update verwendet
+                    method: 'PUT', // PUT wird für Erstellung und Update verwendet
                     headers: {
                         'Authorization': `token ${CONFIG.TOKEN}`,
                         'Accept': 'application/vnd.github.v3+json',
@@ -698,6 +715,13 @@
                     },
                     body: JSON.stringify(payload)
                 });
+
+                if (response.status === 401) {
+                    syncActive = false; // Fehler-Flag setzen, da Token falsch
+                    document.getElementById('sync-status').textContent = '❌ Fehler 401 (Speichern)';
+                    showNotification('Dauerhafter Fehler beim Speichern: HTTP 401. Bitte **TOKEN und REPO** prüfen.', 'error', 15000);
+                    throw new Error(`HTTP-Fehler beim Speichern! Status: 401.`);
+                }
 
                 if (!response.ok) {
                     document.getElementById('sync-status').textContent = '❌ Speicherfehler';
@@ -711,8 +735,8 @@
                 document.getElementById('sync-status').textContent = '✅ Synchronisiert';
             } catch (error) {
                 console.error('Fehler beim Speichern in GitHub:', error);
-                showNotification(`Fehler beim Speichern in GitHub: ${error.message}`, 'error', 5000);
                 document.getElementById('sync-status').textContent = '❌ Speicherfehler';
+                showNotification(`Fehler beim Speichern in GitHub: ${error.message}`, 'error', 5000);
             }
         }
 
@@ -736,7 +760,9 @@
                 if (savedInventory) {
                     inventory = JSON.parse(savedInventory);
                     showNotification('Inventar aus lokalem Speicher geladen.', 'info');
-                    document.getElementById('sync-status').textContent = '⚠️ Nur lokal';
+                    if(syncActive) { // Nur ändern, wenn kein 401-Fehler aufgetreten ist
+                        document.getElementById('sync-status').textContent = '⚠️ Nur lokal';
+                    }
                 } else {
                     inventory = [];
                     showNotification('Kein Inventar gefunden. Starten Sie mit der Eingabe.', 'info');
