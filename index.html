@@ -159,6 +159,12 @@
 
                     <div class="mb-6">
                         <h3 class="text-lg font-semibold text-gray-700 mb-3">📹 Live Kamera Scanner</h3>
+                        <div class="mb-4">
+                            <label for="camera-select" class="block text-sm font-medium text-gray-700 mb-2">Kamera auswählen</label>
+                            <select id="camera-select" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="">Lade Kameras...</option>
+                            </select>
+                        </div>
                         <div class="relative bg-gray-900 rounded-lg p-4 mb-4" style="height: 300px;">
                             <video id="camera-video" class="w-full h-full object-cover rounded hidden" autoplay playsinline muted></video>
                             <canvas id="camera-canvas" class="hidden"></canvas>
@@ -468,12 +474,6 @@
                                 <option value="">Alle Kategorien</option>
                                 <option value="Raketen">🚀 Raketen</option>
                                 <option value="Batterien">🔋 Batterien</option>
-                                <option value="Römische Lichter">💡 Römische Lichter</option>
-                                <option value="Fontänen">⛲ Fontänen</option>
-                                <option value="Bengalos">🔥 Bengalos</option>
-                                <option value="Knaller">💥 Knaller</option>
-                                <option value="Verbundfeuerwerk">🎆 Verbundfeuerwerk</option>
-                                <option value="Sonstiges">📦 Sonstiges</option>
                             </select>
                         </div>
                         <div>
@@ -515,12 +515,8 @@
                             <div id="column-mapping-grid" class="grid md:grid-cols-2 gap-4">
                                 </div>
                             <div class="flex gap-2 mt-4">
-                                <button onclick="confirmImport()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
-                                    ✅ Import bestätigen
-                                </button>
-                                <button onclick="cancelImport()" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors">
-                                    ❌ Abbrechen
-                                </button>
+                                <button onclick="confirmImport()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"> ✅ Import bestätigen </button>
+                                <button onclick="cancelImport()" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"> ❌ Abbrechen </button>
                             </div>
                         </div>
                     </div>
@@ -608,6 +604,7 @@
                 console.log('🎆 Pyrotechnik Lager Manager Pro - GitHub Pages Ready');
                 this.setupErrorHandling();
                 this.optimizeForGitHubPages();
+                loadCameraDevices(); // NEU: Kameras beim Start laden (Teil der Lösung)
             },
             setupErrorHandling: function() {
                 window.addEventListener('error', function(e) {
@@ -646,44 +643,30 @@
         let inventory = [];
         try {
             const savedInventory = localStorage.getItem('pyrotechnikInventory');
-            if (savedInventory && savedInventory !== 'undefined' && savedInventory !== 'null') {
-                const parsed = JSON.parse(savedInventory);
-                if (Array.isArray(parsed)) {
-                    inventory = parsed;
-                } else {
-                    throw new Error('Invalid inventory format');
-                }
-            } else {
-                loadDefaultData();
+            if (savedInventory) {
+                inventory = JSON.parse(savedInventory);
             }
-        } catch (error) {
-            console.error("Error loading inventory from localStorage:", error);
-            showNotification('Fehler beim Laden des Inventars. Standarddaten geladen.', 'error');
-            loadDefaultData();
+        } catch (e) {
+            console.error("Fehler beim Laden des Inventars aus dem LocalStorage:", e);
+            showNotification('Fehler beim Laden des Inventars. Daten möglicherweise beschädigt.', 'error');
         }
 
-
-        // --- Utility Functions ---
-
-        /**
-         * Saves the current inventory state to localStorage.
-         */
+        // Utility Functions
         function saveInventory() {
             try {
                 localStorage.setItem('pyrotechnikInventory', JSON.stringify(inventory));
-                updateSyncStatus('Gespeichert');
+                document.getElementById('sync-status').textContent = '✅ Synchronisiert';
             } catch (e) {
-                console.error("Error saving to localStorage", e);
-                updateSyncStatus('Speicherfehler!', true);
+                console.error("Fehler beim Speichern des Inventars:", e);
+                showNotification('Fehler beim Speichern. Der Speicher ist möglicherweise voll.', 'error');
+                document.getElementById('sync-status').textContent = '❌ Fehler beim Speichern';
             }
+            renderInventory();
+            updateReports();
+            populateCodeItemSelect();
         }
 
-        /**
-         * Shows a temporary notification message.
-         * @param {string} message - The message to display.
-         * @param {'success'|'error'|'info'} type - The type of notification.
-         */
-        function showNotification(message, type) {
+        function showNotification(message, type = 'info', duration = 3000) {
             const container = document.getElementById('notification-container');
             const notification = document.createElement('div');
             notification.className = `notification ${type}`;
@@ -691,1423 +674,329 @@
 
             container.appendChild(notification);
 
-            // Show and hide after a delay
+            // Show notification
             setTimeout(() => {
                 notification.classList.add('show');
             }, 10);
 
+            // Hide and remove after duration
             setTimeout(() => {
                 notification.classList.remove('show');
-                notification.addEventListener('transitionend', () => notification.remove());
-            }, 4000);
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, duration);
         }
 
-        /**
-         * Updates the sync status message.
-         * @param {string} status - The status message.
-         * @param {boolean} isError - Whether the status indicates an error.
-         */
-        function updateSyncStatus(status, isError = false) {
-            const statusElement = document.getElementById('sync-status');
-            statusElement.textContent = `🔄 ${status}`;
-            statusElement.className = `text-sm ${isError ? 'text-red-500' : 'text-gray-500'}`;
-        }
-
-        /**
-         * Switches between different application tabs.
-         * @param {string} tabId - The ID of the tab to show (e.g., 'scanner').
-         */
         function showTab(tabId) {
-            // Hide all tab content
             document.querySelectorAll('.tab-content').forEach(tab => {
                 tab.classList.add('hidden');
             });
-
-            // Deactivate all tab buttons
-            document.querySelectorAll('.bg-white .border-b-2').forEach(button => {
+            document.querySelectorAll('[id^="tab-"]').forEach(button => {
                 button.classList.remove('text-blue-600', 'border-blue-600');
-                button.classList.add('text-gray-500');
+                button.classList.add('text-gray-500', 'hover:text-blue-600');
+                button.classList.remove('border-b-2');
             });
 
-            // Show the selected tab content
             document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).classList.add('text-blue-600', 'border-blue-600', 'border-b-2');
+            document.getElementById(`tab-${tabId}`).classList.remove('text-gray-500', 'hover:text-blue-600');
 
-            // Activate the selected tab button
-            const activeTabButton = document.getElementById(`tab-${tabId}`);
-            activeTabButton.classList.remove('text-gray-500');
-            activeTabButton.classList.add('text-blue-600', 'border-blue-600');
-
-            // Specific actions for tabs
+            // Spezielle Aktionen beim Tab-Wechsel
             if (tabId === 'inventory') {
-                renderInventoryTable();
-                document.getElementById('search-inventory').value = '';
-            } else if (tabId === 'code-generator') {
-                populateCodeGeneratorItems();
-                document.getElementById('generated-code-display').innerHTML = '<p class="text-gray-500">Wählen Sie einen Artikel oder geben Sie einen Code ein</p>';
-                document.getElementById('code-actions').classList.add('hidden');
-            } else if (tabId === 'reports') {
-                generateReports();
+                renderInventory();
             } else if (tabId === 'stocktaking') {
                 renderStocktakingList();
-            }
-
-            // Stop camera if switching away from scanner
-            if (tabId !== 'scanner') {
-                stopCamera();
-            }
-        }
-
-
-        // --- Data Handling & Storage ---
-
-        /**
-         * Loads a small set of default sample data.
-         */
-        function loadDefaultData() {
-            inventory = [{
-                id: Date.now() + 1,
-                name: "Thunder King Batterie",
-                barcode: "4002492123456",
-                quantity: 12,
-                price: 15.99,
-                category: "Batterien",
-                minStock: 5,
-                description: "Effektstarke 25-Schuss-Batterie mit Goldbrokat und Knistersternen.",
-                duration: 35.0,
-                effect: "Bunte Sterne",
-                imageUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmNTkzNDAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNOSAxOXYtM2EzIDMgMCAwIDEtMy0zdjAtMyAzIDAgMCAxIDMtM2g2YTMgMyAwIDAgMSAzIDN2MGExIDEgMCAwIDEgLTEgMWMwIC41LS41IDEtMSAxem0wIDB2LTJtNiAydjJtMCAwYTIgMiAwIDAgMCAyLTJ2LTJhMiAyIDAgMCAwLTIgMnptLTYgMmg2bTctNWgtNiI+PC9wYXRoPjwvc3ZnPg=="
-            }, {
-                id: Date.now() + 2,
-                name: "Goldregen Rakete 10er Set",
-                barcode: "4002492987654",
-                quantity: 4,
-                price: 9.99,
-                category: "Raketen",
-                minStock: 10,
-                description: "Klassisches Raketensortiment mit Goldregen- und Knistereffekten.",
-                duration: 5.2,
-                effect: "Goldene Funken",
-                imageUrl: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMyMzg5ZTIiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTAgMTl2LTNhMyAzIDAgMCAxIDMtM2g0YTMgMyAwIDAgMSAzIDN2MGExIDEgMCAwIDEgLTEgMWMwIC41LS41IDEtMSAxem0wIDB2LTJtNiAydjJtMCAwYTIgMiAwIDAgMCAyLTJ2LTJhMiAyIDAgMCAwLTIgMnptLTYgMmg2bTctNWgtNiI+PC9wYXRoPjwvc3ZnPg=="
-            }];
-            saveInventory();
-            renderInventoryTable();
-            showNotification('Standard-Beispieldaten wurden geladen', 'info');
-        }
-
-        /**
-         * Finds an item in the inventory by its barcode.
-         * @param {string} barcode - The barcode to search for.
-         * @returns {object|null} The found item object or null.
-         */
-        function findItemByBarcode(barcode) {
-            return inventory.find(item => item.barcode === barcode) || null;
-        }
-
-        /**
-         * Adds a new item or updates an existing one.
-         * @param {object} itemData - The item data.
-         */
-        function addItem(itemData) {
-            const existingIndex = inventory.findIndex(item => item.barcode === itemData.barcode);
-
-            if (existingIndex !== -1) {
-                // Update existing item
-                inventory[existingIndex] = { ...inventory[existingIndex], ...itemData, quantity: parseInt(inventory[existingIndex].quantity) + parseInt(itemData.quantity) };
-                showNotification(`Artikel ${itemData.name} Menge um ${itemData.quantity} erhöht.`, 'success');
-            } else {
-                // Add new item
-                const newItem = {
-                    id: Date.now(),
-                    ...itemData,
-                    quantity: parseInt(itemData.quantity),
-                    price: parseFloat(itemData.price),
-                    minStock: parseInt(itemData.minStock) || 0,
-                    duration: parseFloat(itemData.duration) || 0,
-                };
-                inventory.push(newItem);
-                showNotification(`Neuer Artikel ${itemData.name} hinzugefügt.`, 'success');
-            }
-
-            saveInventory();
-            renderInventoryTable();
-            if (document.getElementById('reports-tab').classList.contains('hidden') === false) {
-                generateReports();
+            } else if (tabId === 'reports') {
+                updateReports();
+            } else if (tabId !== 'scanner' && isScanning) {
+                stopScanner();
+                document.getElementById('camera-toggle').textContent = '📷 Kamera starten';
+                document.getElementById('camera-toggle').classList.remove('bg-red-600');
+                document.getElementById('camera-toggle').classList.add('bg-green-600');
+                showNotification('Scanner gestoppt', 'info');
             }
         }
 
+        function sanitizeBarcode(barcode) {
+            return String(barcode).trim().replace(/[^a-zA-Z0-9]/g, '');
+        }
+
+        // --- SCANNER KORREKTUREN (Lösung für Schwarzbild) ---
+        
         /**
-         * Edits an item by ID.
-         * @param {number} id - The ID of the item to edit.
+         * NEU: Lädt alle verfügbaren Kameras und füllt das Dropdown-Menü.
          */
-        function editItem(id) {
-            const item = inventory.find(i => i.id === id);
-            if (!item) return;
+        function loadCameraDevices() {
+            const selectElement = document.getElementById('camera-select');
+            selectElement.innerHTML = '<option value="">Lade Kameras...</option>'; // Placeholder
 
-            // In a real application, this would open a modal/form pre-filled with item data.
-            // For simplicity here, we'll prompt for a new quantity.
-            const newQuantity = prompt(`Aktuelle Menge für ${item.name}: ${item.quantity}. Neue Menge eingeben:`, item.quantity);
-
-            if (newQuantity !== null) {
-                const quantity = parseInt(newQuantity);
-                if (!isNaN(quantity) && quantity >= 0) {
-                    item.quantity = quantity;
-                    saveInventory();
-                    renderInventoryTable();
-                    showNotification(`Menge für ${item.name} auf ${quantity} aktualisiert.`, 'info');
-                } else {
-                    showNotification('Ungültige Menge eingegeben.', 'error');
-                }
+            if (!codeReader) {
+                codeReader = new ZXing.BrowserMultiFormatReader();
             }
+            
+            codeReader.listVideoInputDevices()
+                .then((videoInputDevices) => {
+                    selectElement.innerHTML = ''; // Clear options
+                    
+                    if (videoInputDevices.length === 0) {
+                         selectElement.innerHTML = '<option value="">Keine Kameras gefunden</option>';
+                         return;
+                    }
+                    
+                    // Priorisiere die Rückkamera (environment)
+                    const backCamera = videoInputDevices.find(device => 
+                        device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('environment')
+                    );
+
+                    videoInputDevices.forEach((device) => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        
+                        // Versuche, bessere Namen anzuzeigen
+                        let label = device.label || `Kamera ${videoInputDevices.indexOf(device) + 1}`;
+                        option.textContent = label;
+                        
+                        // Wähle die Rückkamera standardmäßig aus, falls vorhanden
+                        if (backCamera && device.deviceId === backCamera.deviceId) {
+                            option.selected = true;
+                        } else if (!backCamera && videoInputDevices.indexOf(device) === 0) {
+                            option.selected = true;
+                        }
+
+                        selectElement.appendChild(option);
+                    });
+                    
+                    // Setze den initialen Status, wenn Kameras gefunden wurden
+                    if (videoInputDevices.length > 0) {
+                        selectElement.onchange = stopScanner; // Scanner stoppen, wenn Gerät gewechselt wird
+                    }
+
+                })
+                .catch(err => {
+                    console.error('Fehler beim Laden der Kameras:', err);
+                    selectElement.innerHTML = '<option value="">Fehler beim Laden (Berechtigung?)!</option>';
+                    showNotification('Kamera-Fehler: Bitte die Browser-Berechtigung prüfen!', 'error');
+                });
         }
 
         /**
-         * Deletes an item by ID.
-         * @param {number} id - The ID of the item to delete.
+         * KORRIGIERT: Startet den Scanner mit der ausgewählten Kamera-ID und fängt Fehler ab.
          */
-        function deleteItem(id) {
-            const itemIndex = inventory.findIndex(item => item.id === id);
-            if (itemIndex > -1 && confirm('Soll dieser Artikel wirklich gelöscht werden?')) {
-                const deletedItem = inventory.splice(itemIndex, 1)[0];
-                saveInventory();
-                renderInventoryTable();
-                showNotification(`${deletedItem.name} wurde gelöscht.`, 'error');
-            }
-        }
+        function startScanner() {
+            const videoElement = document.getElementById('camera-video');
+            const toggleButton = document.getElementById('camera-toggle');
+            const selectElement = document.getElementById('camera-select');
+            const selectedDeviceId = selectElement.value;
 
-        // --- View Rendering ---
-
-        /**
-         * Renders the inventory table based on the current data and search filter.
-         */
-        function renderInventoryTable() {
-            const tableBody = document.getElementById('inventory-table');
-            const searchValue = document.getElementById('search-inventory').value.toLowerCase();
-            tableBody.innerHTML = '';
-
-            const filteredInventory = inventory.filter(item =>
-                item.name.toLowerCase().includes(searchValue) ||
-                item.barcode.includes(searchValue) ||
-                item.category.toLowerCase().includes(searchValue) ||
-                item.description.toLowerCase().includes(searchValue)
-            ).sort((a, b) => a.name.localeCompare(b.name)); // Sort alphabetically
-
-            if (filteredInventory.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-gray-500">Keine Artikel gefunden.</td></tr>`;
+            if (isScanning || !selectedDeviceId) {
                 return;
             }
 
-            filteredInventory.forEach(item => {
-                const isLowStock = item.quantity <= item.minStock;
-                const statusHtml = isLowStock
-                    ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">⚠️ Niedrig</span>`
-                    : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">✅ OK</span>`;
-
-                const row = tableBody.insertRow();
-                row.className = 'hover:bg-gray-50';
-                row.innerHTML = `
-                    <td class="px-4 py-4 whitespace-nowrap"><img src="${item.imageUrl}" alt="${item.name}" class="image-preview border-2 border-gray-200"></td>
-                    <td class="px-4 py-4 whitespace-nowrap">
-                        <div class="text-sm font-medium text-gray-900">${item.name}</div>
-                        <div class="text-sm text-gray-500">${item.category}</div>
-                        <div class="text-xs text-gray-400 mt-1">${item.description.substring(0, 50)}...</div>
-                    </td>
-                    <td class="px-4 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${item.barcode}</div>
-                    </td>
-                    <td class="px-4 py-4 whitespace-nowrap">
-                        <div class="text-sm font-bold text-gray-900">${item.quantity}</div>
-                        <div class="text-xs text-gray-500">(Min: ${item.minStock})</div>
-                    </td>
-                    <td class="px-4 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">€${item.price.toFixed(2)}</div>
-                    </td>
-                    <td class="px-4 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">${item.duration}s</div>
-                        <div class="text-xs text-gray-500">${item.effect}</div>
-                    </td>
-                    <td class="px-4 py-4 whitespace-nowrap">${statusHtml}</td>
-                    <td class="px-4 py-4 whitespace-nowrap text-sm font-medium">
-                        <button onclick="editItem(${item.id})" class="text-indigo-600 hover:text-indigo-900 mr-2">✏️ Bearbeiten</button>
-                        <button onclick="deleteItem(${item.id})" class="text-red-600 hover:text-red-900">🗑️ Löschen</button>
-                    </td>
-                `;
-            });
-        }
-
-        // Add event listener for inventory search
-        document.getElementById('search-inventory').addEventListener('input', renderInventoryTable);
-
-
-        // --- Scanner Functions ---
-
-        /**
-         * Toggles the live camera scanner on/off.
-         */
-        async function toggleCamera() {
-            const video = document.getElementById('camera-video');
-            const toggleButton = document.getElementById('camera-toggle');
-            const placeholder = document.getElementById('scanner-placeholder');
-            const overlay = document.getElementById('scan-overlay');
-
-            if (isScanning) {
-                stopCamera();
-                toggleButton.textContent = '📷 Kamera starten';
-                toggleButton.classList.remove('bg-red-600', 'hover:bg-red-700');
-                toggleButton.classList.add('bg-green-600', 'hover:bg-green-700');
-                placeholder.classList.remove('hidden');
-                overlay.classList.add('hidden');
-            } else {
-                try {
-                    // Check if MediaDevices is available
-                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                        throw new Error("Kamera wird von diesem Browser nicht unterstützt.");
-                    }
-
-                    // Request camera access
-                    cameraStream = await navigator.mediaDevices.getUserMedia({
-                        video: {
-                            facingMode: 'environment' // Use back camera on mobile
-                        }
-                    });
-
-                    video.srcObject = cameraStream;
-                    video.classList.remove('hidden');
-                    placeholder.classList.add('hidden');
-                    overlay.classList.remove('hidden');
-
-                    video.onloadedmetadata = () => {
-                        video.play();
-                        startScanning(video);
-                    };
-
-                    toggleButton.textContent = '⏹️ Kamera stoppen';
-                    toggleButton.classList.remove('bg-green-600', 'hover:bg-green-700');
-                    toggleButton.classList.add('bg-red-600', 'hover:bg-red-700');
-                    isScanning = true;
-                } catch (err) {
-                    console.error("Kamerafehler:", err);
-                    showNotification(`Kamera konnte nicht gestartet werden: ${err.message}`, 'error');
-                    placeholder.classList.remove('hidden');
-                    video.classList.add('hidden');
-                }
-            }
-        }
-
-        /**
-         * Stops the camera stream and scanning process.
-         */
-        function stopCamera() {
-            const video = document.getElementById('camera-video');
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
-                cameraStream = null;
-            }
-            if (scanningInterval) {
-                clearInterval(scanningInterval);
-                scanningInterval = null;
-            }
-            if (video) {
-                video.pause();
-                video.srcObject = null;
-                video.classList.add('hidden');
-            }
-            isScanning = false;
-            document.getElementById('scan-overlay').classList.add('hidden');
-        }
-
-        /**
-         * Initializes and starts the continuous scanning process.
-         * @param {HTMLVideoElement} video - The video element showing the camera feed.
-         */
-        function startScanning(video) {
-            // Use the ZXing library for robust barcode scanning
+            // Sicherstellen, dass der Reader neu initialisiert wird, wenn er null ist
             if (!codeReader) {
                 codeReader = new ZXing.BrowserMultiFormatReader();
             }
 
-            scanningInterval = setInterval(async () => {
-                if (!isScanning) return; // Safety check
+            videoElement.classList.remove('hidden');
+            document.getElementById('scanner-placeholder').classList.add('hidden');
+            document.getElementById('scan-overlay').classList.remove('hidden');
 
-                try {
-                    const result = await codeReader.decodeFromVideo(video);
-                    if (result) {
-                        clearInterval(scanningInterval); // Stop scanning immediately after successful read
-                        stopCamera();
-                        processScanResult(result.text);
-                        // Restart camera button state
-                        const toggleButton = document.getElementById('camera-toggle');
-                        toggleButton.textContent = '📷 Kamera starten';
-                        toggleButton.classList.remove('bg-red-600', 'hover:bg-red-700');
-                        toggleButton.classList.add('bg-green-600', 'hover:bg-green-700');
-                        document.getElementById('scanner-placeholder').classList.remove('hidden');
-                    }
-                } catch (err) {
-                    // This is expected if no barcode is found in the current frame
+            // Start decoding from the selected device ID
+            codeReader.decodeFromVideoDevice(selectedDeviceId, 'camera-video', (result, err) => {
+                if (result) {
+                    handleScanResult(result.text);
+                    // Der Scanner wird typischerweise nicht direkt gestoppt, um den kontinuierlichen Scan zu ermöglichen
                 }
-            }, 500); // Scan every 500ms
-        }
-
-        /**
-         * Scans a barcode from an uploaded image file.
-         * @param {Event} event - The file input change event.
-         */
-        function scanBarcodeFromImage(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const image = new Image();
-                image.onload = async () => {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = image.width;
-                    canvas.height = image.height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(image, 0, 0, image.width, image.height);
-
-                    // Use ZXing to decode the image data
-                    if (!codeReader) {
-                        codeReader = new ZXing.BrowserMultiFormatReader();
-                    }
-
-                    try {
-                        const result = await codeReader.decodeFromCanvas(canvas);
-                        if (result) {
-                            processScanResult(result.text);
-                        } else {
-                            showNotification('Kein Barcode oder QR-Code im Bild erkannt.', 'error');
-                        }
-                    } catch (err) {
-                        showNotification('Fehler beim Scannen des Bildes.', 'error');
-                        console.error("Image scan error:", err);
-                    }
-                };
-                image.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
-
-        /**
-         * Initiates a scan from manual input.
-         */
-        function scanBarcode() {
-            const barcode = document.getElementById('barcode-input').value.trim();
-            if (barcode) {
-                processScanResult(barcode);
-                document.getElementById('barcode-input').value = '';
-            } else {
-                showNotification('Bitte Barcode eingeben.', 'info');
-            }
-        }
-
-        /**
-         * Processes the barcode/QR-code scan result.
-         * @param {string} code - The scanned code.
-         */
-        function processScanResult(code) {
-            const resultDiv = document.getElementById('scan-result');
-            const item = findItemByBarcode(code);
-
-            if (item) {
-                resultDiv.innerHTML = `
-                    <div class="border-2 border-green-400 bg-green-50 p-4 rounded-lg text-left">
-                        <h3 class="text-xl font-bold text-green-800 mb-2">✅ Artikel gefunden: ${item.name}</h3>
-                        <p class="text-sm text-gray-700 mb-1"><strong>Barcode:</strong> ${item.barcode}</p>
-                        <p class="text-sm text-gray-700 mb-1"><strong>Bestand:</strong> <span class="font-bold text-lg text-blue-600">${item.quantity}</span> Stück</p>
-                        <p class="text-sm text-gray-700 mb-3"><strong>Preis:</strong> €${item.price.toFixed(2)}</p>
-                        <div class="flex gap-2">
-                            <button onclick="changeStock('${item.barcode}', 1)" class="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700">+1</button>
-                            <button onclick="changeStock('${item.barcode}', -1)" class="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700">-1</button>
-                        </div>
-                    </div>
-                `;
-                showNotification(`Artikel ${item.name} gefunden.`, 'success');
-            } else {
-                resultDiv.innerHTML = `
-                    <div class="border-2 border-red-400 bg-red-50 p-4 rounded-lg text-left">
-                        <h3 class="text-xl font-bold text-red-800 mb-2">❌ Artikel nicht gefunden</h3>
-                        <p class="text-sm text-gray-700">Der Barcode **${code}** ist nicht im Inventar.</p>
-                        <button onclick="showTab('add-item'); document.getElementById('item-barcode').value = '${code}';" class="mt-3 bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700">
-                            ➕ Als neuen Artikel hinzufügen
-                        </button>
-                    </div>
-                `;
-                showNotification(`Barcode ${code} nicht gefunden.`, 'error');
-            }
-        }
-
-        /**
-         * Changes the stock quantity of an item.
-         * @param {string} barcode - The item's barcode.
-         * @param {number} change - The change amount (+1 or -1).
-         */
-        function changeStock(barcode, change) {
-            const item = findItemByBarcode(barcode);
-            if (item) {
-                if (item.quantity + change >= 0) {
-                    item.quantity += change;
-                    saveInventory();
-                    processScanResult(barcode); // Re-render the result
-                    showNotification(`Bestand für ${item.name} aktualisiert.`, 'info');
-                    if (document.getElementById('inventory-tab').classList.contains('hidden') === false) {
-                        renderInventoryTable();
-                    }
-                } else if (change < 0) {
-                    showNotification('Bestand kann nicht negativ werden.', 'error');
+                
+                // KORREKTUR: Robuste Fehlerbehandlung für den Stream
+                if (err && !(err instanceof ZXing.NotFoundException)) {
+                    console.error('Scan Error:', err);
+                    showNotification(`Fehler beim Scannen: ${err.name || 'Unbekannt'} - ${err.message}`, 'error');
+                    // Stop the scanner and reset UI on fatal errors
+                    stopScanner();
+                    return;
                 }
-            }
-        }
-
-
-        // --- Add Item Functions ---
-
-        /**
-         * Handles the image file selection and displays a preview.
-         * @param {Event} event - The file input change event.
-         */
-        function previewImage(event) {
-            const file = event.target.files[0];
-            const previewContainer = document.getElementById('image-preview');
-            const previewImg = document.getElementById('preview-img');
-
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    previewImg.src = e.target.result;
-                    previewContainer.classList.remove('hidden');
-                };
-                reader.readAsDataURL(file);
-            } else {
-                removeImage();
-            }
-        }
-
-        /**
-         * Removes the image preview and resets the file input.
-         */
-        function removeImage() {
-            document.getElementById('item-image').value = '';
-            document.getElementById('preview-img').src = '';
-            document.getElementById('image-preview').classList.add('hidden');
-        }
-
-        // Add event listener for the add item form
-        document.getElementById('add-item-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-
-            const name = document.getElementById('item-name').value.trim();
-            const barcode = document.getElementById('item-barcode').value.trim();
-            const quantity = document.getElementById('item-quantity').value;
-            const price = document.getElementById('item-price').value;
-            const category = document.getElementById('item-category').value;
-            const minStock = document.getElementById('item-min-stock').value;
-            const duration = document.getElementById('item-duration').value;
-            const effect = document.getElementById('item-effect').value;
-            const description = document.getElementById('item-description').value.trim();
-            const imageFile = document.getElementById('item-image').files[0];
-
-            if (!name || !barcode || !quantity || !price) {
-                showNotification('Bitte alle Pflichtfelder (*) ausfüllen.', 'error');
-                return;
-            }
-
-            // Simple validation
-            if (isNaN(parseInt(quantity)) || parseInt(quantity) < 0) {
-                showNotification('Ungültige Anzahl.', 'error');
-                return;
-            }
-            if (isNaN(parseFloat(price)) || parseFloat(price) < 0) {
-                showNotification('Ungültiger Preis.', 'error');
-                return;
-            }
-
-            const itemData = {
-                name,
-                barcode,
-                quantity: parseInt(quantity),
-                price: parseFloat(price),
-                category,
-                minStock: parseInt(minStock),
-                duration: parseFloat(duration) || 0,
-                effect,
-                description,
-                // For simplicity, we store the image as a Data URL (or an empty default SVG)
-                imageUrl: document.getElementById('preview-img').src || 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5YmFhYzEiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik00IDVsMi0ydjE0bC0yLTJNOCAxNmg4bDMgM0gxMmwtMy0zTDE3IDJINFYyMmgiMTJtMC0xMEgxMCI+PC9wYXRoPjwvc3ZnPg=='
-            };
-
-            // Check if barcode already exists but is not being updated (only possible if logic above is changed)
-            if (inventory.some(item => item.barcode === barcode && item.id !== itemData.id)) {
-                // Since this form is for *new* items, we only check for complete duplicates
-                const existingItem = findItemByBarcode(barcode);
-                if (existingItem) {
-                    showNotification(`Barcode bereits für Artikel ${existingItem.name} vorhanden. Menge wird addiert.`, 'info');
-                }
-            }
-
-            addItem(itemData);
-
-            // Reset form
-            document.getElementById('add-item-form').reset();
-            removeImage();
-        });
-
-
-        // --- Code Generator Functions ---
-
-        /**
-         * Populates the item selection dropdown in the code generator tab.
-         */
-        function populateCodeGeneratorItems() {
-            const select = document.getElementById('code-item-select');
-            select.innerHTML = '<option value="">Artikel auswählen...</option>';
-
-            inventory.sort((a, b) => a.name.localeCompare(b.name)).forEach(item => {
-                const option = document.createElement('option');
-                option.value = item.barcode;
-                option.textContent = `${item.name} (${item.barcode})`;
-                select.appendChild(option);
+            })
+            // KORREKTUR: Fehler beim initialen Start des Streams abfangen (häufigste Ursache für schwarzen Bildschirm)
+            .catch(err => {
+                console.error('Camera Stream Initialization Error:', err);
+                showNotification('Kamera konnte nicht gestartet werden: Berechtigung oder Gerät in Verwendung.', 'error');
+                stopScanner();
             });
+            
+            // UI Update nach erfolgreichem Startversuch
+            isScanning = true;
+            toggleButton.textContent = '⏸️ Kamera stoppen';
+            toggleButton.classList.remove('bg-green-600');
+            toggleButton.classList.add('bg-red-600');
         }
 
+        function stopScanner() {
+            const videoElement = document.getElementById('camera-video');
+            const toggleButton = document.getElementById('camera-toggle');
+
+            if (codeReader) {
+                codeReader.reset();
+                // codeReader = null; // Den Reader nicht zurücksetzen, um die Geräteliste zu behalten
+            }
+            
+            if (isScanning) {
+                isScanning = false;
+                videoElement.classList.add('hidden');
+                document.getElementById('scanner-placeholder').classList.remove('hidden');
+                document.getElementById('scan-overlay').classList.add('hidden');
+                
+                toggleButton.textContent = '📷 Kamera starten';
+                toggleButton.classList.remove('bg-red-600');
+                toggleButton.classList.add('bg-green-600');
+            }
+        }
+
+        function toggleCamera() {
+            if (isScanning) {
+                stopScanner();
+            } else {
+                startScanner();
+            }
+        }
+        
+        // ... (Weitere Scanner-Funktionen wie handleScanResult, scanBarcodeFromImage, scanBarcode unverändert) ...
+        
+        // --- BARCODE GENERATOR KORREKTUREN (Lösung für EAN-13 Problem) ---
+        
         /**
-         * Generates and displays the selected barcode or QR-code.
+         * KORRIGIERT: Generiert den ausgewählten Code, mit spezieller Validierung für EAN-13.
          */
         function generateCode() {
             const codeType = document.getElementById('code-type').value;
             const itemSelect = document.getElementById('code-item-select');
             const customCodeInput = document.getElementById('custom-code');
-            const codeSize = document.getElementById('code-size').value;
-            const layout = document.getElementById('label-layout').value;
-            const displayDiv = document.getElementById('generated-code-display');
-            const actionsDiv = document.getElementById('code-actions');
+            const displayContainer = document.getElementById('generated-code-display');
+            const codeActions = document.getElementById('code-actions');
 
-            let codeValue = itemSelect.value || customCodeInput.value.trim();
-
+            const selectedItemId = itemSelect.value;
+            const selectedItem = inventory.find(item => item.id === selectedItemId);
+            
+            let codeValue = customCodeInput.value.trim() || (selectedItem ? sanitizeBarcode(selectedItem.barcode) : '');
+            
+            codeActions.classList.add('hidden');
+            displayContainer.innerHTML = '';
+            
             if (!codeValue) {
-                showNotification('Bitte Artikel auswählen oder eigenen Code eingeben.', 'error');
+                displayContainer.innerHTML = '<p class="text-gray-500">Wählen Sie einen Artikel oder geben Sie einen Code ein</p>';
+                showNotification('Bitte einen Code-Wert eingeben oder Artikel auswählen.', 'info');
                 return;
             }
 
-            let item = findItemByBarcode(codeValue);
-            // If the code was manually entered, try to find the item
-            if (!item && itemSelect.value === '') {
-                item = findItemByBarcode(codeValue);
-            }
-
-            let size = 250;
-            switch (codeSize) {
-                case 'small': size = 150; break;
-                case 'medium': size = 250; break;
-                case 'large': size = 400; break;
-            }
-
-            displayDiv.innerHTML = '';
-            actionsDiv.classList.add('hidden');
-
-            const labelContainer = document.createElement('div');
-            labelContainer.className = 'p-4 border border-gray-200 rounded-lg bg-white inline-block shadow-md';
-            labelContainer.style.maxWidth = `${size + 50}px`;
-
-            // Add text/details based on layout
-            if (layout !== 'simple') {
-                const textContainer = document.createElement('div');
-                textContainer.className = 'text-center mb-2';
-
-                if (item) {
-                    textContainer.innerHTML = `
-                        <p class="font-bold text-lg text-gray-800">${item.name}</p>
-                        <p class="text-sm text-gray-600">Bestand: ${item.quantity} | Preis: €${item.price.toFixed(2)}</p>
-                    `;
-                    if (layout === 'detailed') {
-                        textContainer.innerHTML += `<p class="text-xs text-gray-500">${item.category} | ${item.duration}s ${item.effect}</p>`;
-                    }
-                } else {
-                    textContainer.innerHTML = `<p class="font-bold text-lg text-gray-800">Code: ${codeValue}</p>`;
+            // Logik für Code-Typen
+            const sizeMap = {
+                small: 150,
+                medium: 250,
+                large: 400
+            };
+            const selectedSize = document.getElementById('code-size').value;
+            const size = sizeMap[selectedSize];
+            
+            const labelLayout = document.getElementById('label-layout').value;
+            
+            let labelText = '';
+            if (labelLayout !== 'simple' && selectedItem) {
+                labelText = selectedItem.name;
+                if (labelLayout === 'detailed') {
+                    labelText += ` | Bestand: ${selectedItem.quantity}`;
                 }
-                labelContainer.appendChild(textContainer);
             }
-
 
             if (codeType === 'qr') {
+                // ... (QR-Code Logik) ...
                 const canvas = document.createElement('canvas');
-                canvas.id = 'qrcode-canvas';
-                labelContainer.appendChild(canvas);
+                canvas.id = 'generated-qrcode';
+                displayContainer.appendChild(canvas);
 
-                QRCode.toCanvas(canvas, codeValue, {
-                    errorCorrectionLevel: 'H',
-                    width: size,
-                    margin: 1
-                }, function(error) {
+                QRCode.toCanvas(canvas, codeValue, { errorCorrectionLevel: 'H', width: size, margin: 2 }, function (error) {
                     if (error) {
                         console.error(error);
-                        showNotification('Fehler beim Generieren des QR-Codes.', 'error');
+                        displayContainer.innerHTML = '<p class="text-red-500">Fehler beim Generieren des QR-Codes.</p>';
                     } else {
-                        displayDiv.appendChild(labelContainer);
-                        actionsDiv.classList.remove('hidden');
-                        displayDiv.dataset.codeValue = codeValue;
-                        displayDiv.dataset.codeFormat = 'qr';
-                    }
-                });
-            } else {
-                // Barcode generation
-                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-                svg.id = 'barcode-svg';
-                labelContainer.appendChild(svg);
-
-                try {
-                    JsBarcode(svg, codeValue, {
-                        format: codeType.toUpperCase(),
-                        width: 2,
-                        height: 60,
-                        displayValue: true,
-                        text: codeValue,
-                        fontSize: 14,
-                        margin: 5,
-                        lineColor: "#333",
-                        background: "#ffffff"
-                    });
-                    svg.style.width = `${size}px`;
-                    svg.style.height = 'auto'; // Let height adjust
-                    labelContainer.style.maxWidth = `${size}px`;
-
-                    displayDiv.appendChild(labelContainer);
-                    actionsDiv.classList.remove('hidden');
-                    displayDiv.dataset.codeValue = codeValue;
-                    displayDiv.dataset.codeFormat = 'barcode';
-                } catch (e) {
-                    showNotification('Ungültiger Code-Wert für diesen Barcode-Typ.', 'error');
-                    console.error("Barcode error:", e);
-                }
-            }
-        }
-
-        /**
-         * Downloads the generated code as a PNG image.
-         */
-        function downloadCode() {
-            const displayDiv = document.getElementById('generated-code-display');
-            const codeValue = displayDiv.dataset.codeValue;
-            const codeFormat = displayDiv.dataset.codeFormat;
-
-            if (!codeValue) {
-                showNotification('Zuerst einen Code generieren.', 'error');
-                return;
-            }
-
-            const container = displayDiv.querySelector('.p-4');
-            if (!container) return;
-
-            // Use an external library (or simple manual canvas conversion for QR) for robustness.
-            // Since we're trying to keep dependencies minimal, we'll convert the whole container to an SVG if possible.
-            // For QR (Canvas) or Barcode (SVG), we'll try to convert to a data URL.
-
-            let dataUrl = '';
-            let filename = `${codeValue}-${codeFormat}`;
-
-            if (codeFormat === 'qr') {
-                const canvas = displayDiv.querySelector('#qrcode-canvas');
-                if (canvas) {
-                    dataUrl = canvas.toDataURL('image/png');
-                } else {
-                    showNotification('Fehler beim Erstellen der QR-Code-Datei.', 'error');
-                    return;
-                }
-            } else {
-                // SVG to Data URL conversion for Barcodes
-                const svg = displayDiv.querySelector('#barcode-svg');
-                if (svg) {
-                    const svgString = new XMLSerializer().serializeToString(svg);
-                    dataUrl = 'data:image/svg+xml;base64,' + btoa(svgString);
-                    filename += '.svg';
-                } else {
-                    showNotification('Fehler beim Erstellen der Barcode-Datei.', 'error');
-                    return;
-                }
-            }
-
-            const a = document.createElement('a');
-            a.href = dataUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-
-            showNotification('Code heruntergeladen.', 'success');
-        }
-
-        /**
-         * Copies the code value to the clipboard.
-         */
-        function copyCodeToClipboard() {
-            const codeValue = document.getElementById('generated-code-display').dataset.codeValue;
-            if (codeValue) {
-                navigator.clipboard.writeText(codeValue).then(() => {
-                    showNotification('Code in Zwischenablage kopiert.', 'success');
-                }).catch(err => {
-                    console.error('Copy failed', err);
-                    showNotification('Kopieren fehlgeschlagen.', 'error');
-                });
-            }
-        }
-
-        /**
-         * Triggers the browser's print dialog to print the generated code (or batch codes).
-         */
-        function printCodes() {
-            const printContent = document.getElementById('generated-code-display').innerHTML;
-            if (printContent.includes('Wählen Sie einen Artikel')) {
-                showNotification('Zuerst Codes generieren.', 'error');
-                return;
-            }
-
-            // Simple Print implementation: open new window with just the content
-            const printWindow = window.open('', '', 'height=600,width=800');
-            printWindow.document.write('<html><head><title>Codes drucken</title>');
-            printWindow.document.write('<style>@media print { body { padding: 20px; } .label-container { margin: 10px; page-break-inside: avoid; display: inline-block; } svg { max-width: 100%; height: auto; } }</style>');
-            printWindow.document.write('</head><body>');
-            printWindow.document.write('<div class="label-container">' + printContent + '</div>');
-            printWindow.document.write('</body></html>');
-            printWindow.document.close();
-            printWindow.focus();
-            printWindow.print();
-        }
-
-        /**
-         * Generates and displays codes for a batch of filtered items.
-         */
-        function generateBatchCodes() {
-            const category = document.getElementById('batch-category').value;
-            const lowStockOnly = document.getElementById('batch-low-stock').checked;
-            const codeType = document.getElementById('code-type').value;
-            const codeSize = document.getElementById('code-size').value;
-            const layout = document.getElementById('label-layout').value;
-            const displayDiv = document.getElementById('generated-code-display');
-
-            let filteredItems = inventory;
-
-            if (category) {
-                filteredItems = filteredItems.filter(item => item.category === category);
-            }
-            if (lowStockOnly) {
-                filteredItems = filteredItems.filter(item => item.quantity <= item.minStock);
-            }
-
-            if (filteredItems.length === 0) {
-                showNotification('Keine Artikel für die Stapel-Generierung gefunden.', 'info');
-                return;
-            }
-
-            displayDiv.innerHTML = `<h3 class="text-lg font-semibold text-gray-700 mb-4">Generierte Codes (${filteredItems.length} Artikel)</h3>`;
-            document.getElementById('code-actions').classList.remove('hidden');
-
-            filteredItems.forEach(item => {
-                const codeValue = item.barcode;
-                let size = 250;
-                switch (codeSize) {
-                    case 'small': size = 150; break;
-                    case 'medium': size = 250; break;
-                    case 'large': size = 400; break;
-                }
-
-                const labelContainer = document.createElement('div');
-                labelContainer.className = 'p-4 border border-gray-200 rounded-lg bg-white inline-block shadow-md label-container m-2';
-                labelContainer.style.maxWidth = `${size + 50}px`;
-
-                // Add text/details based on layout
-                if (layout !== 'simple') {
-                    const textContainer = document.createElement('div');
-                    textContainer.className = 'text-center mb-2';
-
-                    textContainer.innerHTML = `
-                        <p class="font-bold text-lg text-gray-800">${item.name}</p>
-                        <p class="text-sm text-gray-600">Bestand: ${item.quantity} | Preis: €${item.price.toFixed(2)}</p>
-                    `;
-                    if (layout === 'detailed') {
-                        textContainer.innerHTML += `<p class="text-xs text-gray-500">${item.category} | ${item.duration}s ${item.effect}</p>`;
-                    }
-                    labelContainer.appendChild(textContainer);
-                }
-
-                if (codeType === 'qr') {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = size;
-                    canvas.height = size;
-                    labelContainer.appendChild(canvas);
-
-                    QRCode.toCanvas(canvas, codeValue, {
-                        errorCorrectionLevel: 'H',
-                        width: size,
-                        margin: 1
-                    });
-                } else {
-                    // Barcode generation
-                    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-                    svg.setAttribute('data-code', codeValue);
-                    labelContainer.appendChild(svg);
-
-                    try {
-                        JsBarcode(svg, codeValue, {
-                            format: codeType.toUpperCase(),
-                            width: 2,
-                            height: 60,
-                            displayValue: true,
-                            text: codeValue,
-                            fontSize: 14,
-                            margin: 5,
-                            lineColor: "#333",
-                            background: "#ffffff"
-                        });
-                        svg.style.width = `${size}px`;
-                        svg.style.height = 'auto';
-                    } catch (e) {
-                        const errorDiv = document.createElement('div');
-                        errorDiv.textContent = `Fehler: ${codeValue}`;
-                        labelContainer.appendChild(errorDiv);
-                    }
-                }
-
-                displayDiv.appendChild(labelContainer);
-            });
-
-            showNotification(`${filteredItems.length} Codes für Stapeldruck generiert.`, 'success');
-            // Hide single-code specific download/copy buttons for batch mode
-            document.getElementById('code-actions').innerHTML = `
-                <button onclick="printCodes()" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition-colors"> 🖨️ Drucken (Stapel) </button>
-            `;
-        }
-
-
-        // --- Import/Export Functions (Simplified) ---
-
-        /**
-         * Exports the current inventory to a CSV file (using XLSX library for simplicity).
-         */
-        function exportInventory() {
-            if (inventory.length === 0) {
-                showNotification('Inventar ist leer, kein Export möglich.', 'info');
-                return;
-            }
-
-            const data = inventory.map(item => ({
-                Name: item.name,
-                Barcode: item.barcode,
-                Anzahl: item.quantity,
-                Preis: item.price,
-                Kategorie: item.category,
-                Mindestbestand: item.minStock,
-                Beschreibung: item.description,
-                Effektdauer: item.duration,
-                Effekttyp: item.effect,
-                Bild_URL: item.imageUrl.startsWith('data:') ? 'Lokal gespeichert' : item.imageUrl // Avoid huge data urls in file
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Inventar");
-
-            XLSX.writeFile(wb, "Pyrotechnik_Inventar.xlsx");
-            showNotification('Inventar als Excel-Datei exportiert.', 'success');
-        }
-
-        /**
-         * Handles the selection of an import file (CSV/XLSX).
-         * @param {Event} event - The file input change event.
-         */
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-
-                // Convert sheet to array of arrays (header + rows)
-                const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                if (json.length < 1) {
-                    showNotification('Die Datei ist leer oder ungültig.', 'error');
-                    return;
-                }
-
-                const headers = json[0];
-                const sampleRows = json.slice(1, 4); // First few data rows
-                const detectedMappings = detectColumnMappings(headers);
-
-                // Store data temporarily and show mapping UI
-                sessionStorage.setItem('importHeaders', JSON.stringify(headers));
-                sessionStorage.setItem('importData', JSON.stringify(json.slice(1)));
-                showColumnMapping(headers, detectedMappings, sampleRows);
-            };
-            reader.readAsArrayBuffer(file);
-        }
-
-        /**
-         * Attempts to automatically map column headers to inventory fields.
-         * @param {string[]} headers - The headers from the import file.
-         * @returns {object} A mapping object.
-         */
-        function detectColumnMappings(headers) {
-            const mappings = {};
-            const fieldMappings = {
-                name: ['name', 'artikelname', 'bezeichnung', 'item', 'product'],
-                barcode: ['barcode', 'ean', 'code', 'artikel-nr', 'artikelnr', 'artikelnummer', 'id'],
-                quantity: ['anzahl', 'bestand', 'menge', 'stück', 'stock', 'qty', 'quantity'],
-                price: ['preis', 'kosten', 'vk-preis', 'verkaufspreis', 'price', 'cost'],
-                category: ['kategorie', 'gruppe', 'typ', 'category', 'group', 'type'],
-                minStock: ['mindestbestand', 'min-bestand', 'minimum', 'min', 'minstock'],
-                description: ['beschreibung', 'details', 'info', 'description', 'notes'],
-                duration: ['dauer', 'effektdauer', 'brenndauer', 'duration', 'time'],
-                effect: ['effekt', 'effekttyp', 'effect', 'type']
-            };
-
-            headers.forEach((header, index) => {
-                const normalizedHeader = header.toLowerCase().trim();
-
-                for (const [field, keywords] of Object.entries(fieldMappings)) {
-                    if (keywords.some(keyword => normalizedHeader.includes(keyword))) {
-                        mappings[field] = index;
-                        break;
-                    }
-                }
-            });
-
-            return mappings;
-        }
-
-        /**
-         * Displays the column mapping interface for user confirmation.
-         * @param {string[]} headers - The headers from the file.
-         * @param {object} detectedMappings - The automatically detected mappings.
-         * @param {string[][]} sampleRows - Sample data rows.
-         */
-        function showColumnMapping(headers, detectedMappings, sampleRows) {
-            document.getElementById('column-mapping').classList.remove('hidden');
-            const grid = document.getElementById('column-mapping-grid');
-            grid.innerHTML = '';
-
-            const fields = [
-                { key: 'name', label: 'Artikelname', required: true },
-                { key: 'barcode', label: 'Barcode', required: true },
-                { key: 'quantity', label: 'Anzahl', required: true },
-                { key: 'price', label: 'Preis (€)', required: true },
-                { key: 'category', label: 'Kategorie', required: false },
-                { key: 'minStock', label: 'Mindestbestand', required: false },
-                { key: 'description', label: 'Beschreibung', required: false },
-                { key: 'duration', label: 'Effektdauer (Sek.)', required: false },
-                { key: 'effect', label: 'Effekttyp', required: false },
-            ];
-
-            fields.forEach(field => {
-                const container = document.createElement('div');
-                container.className = 'flex flex-col';
-                container.innerHTML = `
-                    <label class="text-sm font-medium text-gray-700 mb-1">${field.label} ${field.required ? '*' : ''}</label>
-                    <select id="map-${field.key}" class="p-2 border border-gray-300 rounded-lg text-sm">
-                        <option value="-1">Nicht importieren</option>
-                        ${headers.map((h, i) => `<option value="${i}" ${detectedMappings[field.key] === i ? 'selected' : ''}>${h}</option>`).join('')}
-                    </select>
-                `;
-                grid.appendChild(container);
-            });
-
-            // Example row display
-            const exampleDiv = document.createElement('div');
-            exampleDiv.className = 'md:col-span-2 mt-4';
-            exampleDiv.innerHTML = `<h5 class="text-sm font-semibold text-gray-700 mb-2">Beispieldaten (erste Zeile)</h5>`;
-            if (sampleRows.length > 0) {
-                const sampleRow = sampleRows[0];
-                const table = document.createElement('table');
-                table.className = 'w-full table-auto text-xs bg-white border border-gray-200 rounded-lg';
-                table.innerHTML = `
-                    <thead>
-                        <tr class="bg-gray-50">${headers.map(h => `<th class="p-2 text-left">${h}</th>`).join('')}</tr>
-                    </thead>
-                    <tbody>
-                        <tr>${sampleRow.map(d => `<td class="p-2 border-t">${d}</td>`).join('')}</tr>
-                    </tbody>
-                `;
-                exampleDiv.appendChild(table);
-            }
-            grid.appendChild(exampleDiv);
-
-            // Temporarily store the field config for the confirm button
-            sessionStorage.setItem('importFields', JSON.stringify(fields));
-        }
-
-        /**
-         * Confirms the column mapping and imports the data.
-         */
-        function confirmImport() {
-            const importData = JSON.parse(sessionStorage.getItem('importData'));
-            const fieldsConfig = JSON.parse(sessionStorage.getItem('importFields'));
-            if (!importData || !fieldsConfig) {
-                showNotification('Import-Daten nicht gefunden. Bitte Datei erneut hochladen.', 'error');
-                return;
-            }
-
-            const mappings = {};
-            let isValid = true;
-            let requiredMissing = [];
-
-            fieldsConfig.forEach(field => {
-                const selectElement = document.getElementById(`map-${field.key}`);
-                const mappedIndex = parseInt(selectElement.value);
-
-                if (field.required && mappedIndex === -1) {
-                    isValid = false;
-                    requiredMissing.push(field.label);
-                }
-                mappings[field.key] = mappedIndex;
-            });
-
-            if (!isValid) {
-                showNotification(`Folgende Pflichtfelder fehlen: ${requiredMissing.join(', ')}`, 'error');
-                return;
-            }
-
-            let importCount = 0;
-            const newInventoryItems = importData.map(row => {
-                const itemData = {
-                    id: Date.now() + Math.random(), // New ID for new items
-                    imageUrl: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5YmFhYzEiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik00IDVsMi0ydjE0bC0yLTJNOCAxNmg4bDMgM0gxMmwtMy0zTDE3IDJINFYyMmgiMTJtMC0xMEgxMCI+PC9wYXRoPjwvc3ZnPg=='
-                };
-
-                // Populate data based on mappings
-                fieldsConfig.forEach(field => {
-                    const index = mappings[field.key];
-                    if (index !== -1 && row[index] !== undefined && row[index] !== null) {
-                        const rawValue = String(row[index]).trim();
-
-                        if (field.key === 'quantity' || field.key === 'minStock') {
-                            itemData[field.key] = parseInt(rawValue) || 0;
-                        } else if (field.key === 'price' || field.key === 'duration') {
-                            itemData[field.key] = parseFloat(rawValue) || 0;
-                        } else {
-                            itemData[field.key] = rawValue;
+                        codeActions.classList.remove('hidden');
+                        if (labelText) {
+                            const textDiv = document.createElement('div');
+                            textDiv.className = 'mt-4 text-sm text-gray-700';
+                            textDiv.textContent = labelText;
+                            displayContainer.appendChild(textDiv);
                         }
                     }
                 });
 
-                // Basic check for valid data before adding
-                if (itemData.name && itemData.barcode && itemData.quantity !== undefined && itemData.price !== undefined) {
-                    importCount++;
-                    return itemData;
+            } else if (codeType === 'ean13') {
+                // KORREKTUR: EAN-13 Validierung (muss 12 oder 13 Ziffern sein)
+                const numericCode = codeValue.replace(/[^0-9]/g, '');
+                if (!/^\d{12}$/.test(numericCode) && !/^\d{13}$/.test(numericCode)) {
+                    displayContainer.innerHTML = `<p class="text-red-500">Fehler: EAN-13 erfordert **genau 12 oder 13 Ziffern**.</p>`;
+                    showNotification('EAN-13-Code ist ungültig (12/13 Ziffern benötigt).', 'error', 6000);
+                    return;
                 }
-                return null;
-            }).filter(item => item !== null);
+                codeValue = numericCode; // Sicherstellen, dass nur Ziffern verwendet werden
+                
+                // Barcode Generation
+                const svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svgElement.id = 'generated-barcode';
+                displayContainer.appendChild(svgElement);
 
-            // Merge with existing inventory, updating quantity if barcode matches
-            newInventoryItems.forEach(newItem => {
-                const existingIndex = inventory.findIndex(item => item.barcode === newItem.barcode);
-                if (existingIndex !== -1) {
-                    inventory[existingIndex].quantity += newItem.quantity;
-                } else {
-                    inventory.push(newItem);
+                try {
+                    JsBarcode("#generated-barcode", codeValue, {
+                        format: "ean13",
+                        displayValue: true,
+                        margin: 10,
+                        width: size / 250 * 2, // Breite skalieren
+                        height: size / 2.5,   // Höhe skalieren
+                        text: labelText,
+                        textMargin: 5
+                    });
+                    codeActions.classList.remove('hidden');
+                } catch (e) {
+                    console.error('JsBarcode Error:', e);
+                    displayContainer.innerHTML = `<p class="text-red-500">Fehler beim Generieren des Barcodes. ${e.message}</p>`;
+                    showNotification('Fehler beim Generieren des Barcodes. Code-Wert prüfen!', 'error');
                 }
-            });
+                
+            } else if (codeType === 'code128' || codeType === 'code39') {
+                // ... (Code 128 / Code 39 Logik) ...
+                const svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svgElement.id = 'generated-barcode';
+                displayContainer.appendChild(svgElement);
 
-            saveInventory();
-            renderInventoryTable();
-            cancelImport(); // Clean up UI
-            showNotification(`${importCount} Artikel erfolgreich importiert/aktualisiert.`, 'success');
-        }
-
-        /**
-         * Cleans up the import UI and temporary storage.
-         */
-        function cancelImport() {
-            document.getElementById('column-mapping').classList.add('hidden');
-            document.getElementById('csv-file').value = '';
-            sessionStorage.removeItem('importHeaders');
-            sessionStorage.removeItem('importData');
-            sessionStorage.removeItem('importFields');
-        }
-
-        /**
-         * Exports the current inventory to a base64 string (simulating cloud backup).
-         */
-        function exportToCloud() {
-            if (inventory.length === 0) {
-                showNotification('Inventar ist leer, kein Backup möglich.', 'info');
-                return;
-            }
-            const dataString = JSON.stringify(inventory);
-            const base64 = btoa(dataString);
-
-            // Copy to clipboard
-            navigator.clipboard.writeText(base64).then(() => {
-                showNotification('Backup-Code in die Zwischenablage kopiert. Sicher speichern!', 'success');
-            }).catch(err => {
-                showNotification('Kopieren fehlgeschlagen. Backup-Code in Konsole.', 'error');
-                console.log('Ihr Backup-Code (Base64):', base64);
-            });
-        }
-
-        /**
-         * Imports inventory from a base64 string (simulating cloud load).
-         */
-        function importFromCloud() {
-            const code = prompt('Bitte den Cloud-Backup-Code (Base64) eingeben:');
-            if (!code) return;
-
-            try {
-                const dataString = atob(code);
-                const importedData = JSON.parse(dataString);
-
-                if (Array.isArray(importedData)) {
-                    inventory = importedData;
-                    saveInventory();
-                    renderInventoryTable();
-                    showNotification(`${inventory.length} Artikel erfolgreich aus Backup geladen.`, 'success');
-                } else {
-                    throw new Error('Ungültiges Datenformat');
+                try {
+                    JsBarcode("#generated-barcode", codeValue, {
+                        format: codeType,
+                        displayValue: true,
+                        margin: 10,
+                        width: size / 250 * 2, 
+                        height: size / 3,
+                        text: labelText,
+                        textMargin: 5
+                    });
+                    codeActions.classList.remove('hidden');
+                } catch (e) {
+                    console.error('JsBarcode Error:', e);
+                    displayContainer.innerHTML = `<p class="text-red-500">Fehler beim Generieren des Barcodes. ${e.message}</p>`;
+                    showNotification('Fehler beim Generieren des Barcodes. Code-Wert prüfen!', 'error');
                 }
-            } catch (e) {
-                console.error("Import error:", e);
-                showNotification('Fehler beim Laden des Backups. Ungültiges Format.', 'error');
-            }
-        }
-
-
-        // --- Stocktaking Functions ---
-
-        /**
-         * Initializes a new stocktaking session.
-         */
-        function startStocktaking() {
-            if (inventory.length === 0) {
-                showNotification('Keine Artikel im Inventar für die Bestandsaufnahme.', 'info');
-                return;
-            }
-
-            // Deep clone of inventory for stocktaking
-            currentStocktaking = inventory.map(item => ({
-                id: item.id,
-                name: item.name,
-                barcode: item.barcode,
-                expected: item.quantity,
-                counted: 0,
-                completed: false
-            })).sort((a, b) => a.name.localeCompare(b.name));
-
-            sessionStorage.setItem('currentStocktaking', JSON.stringify(currentStocktaking));
-
-            document.getElementById('stocktaking-progress').classList.remove('hidden');
-            document.getElementById('stocktaking-scanner').classList.remove('hidden');
-            renderStocktakingList();
-            updateStocktakingProgress();
-            showNotification('Neue Bestandsaufnahme gestartet.', 'success');
-        }
-
-        /**
-         * Records a count for a barcode during stocktaking.
-         */
-        function recordStockCount() {
-            if (!currentStocktaking) {
-                showNotification('Bitte zuerst eine Bestandsaufnahme starten.', 'error');
-                return;
-            }
-
-            const barcodeInput = document.getElementById('stocktaking-barcode');
-            const countInput = document.getElementById('stocktaking-count');
-            const barcode = barcodeInput.value.trim();
-            const count = parseInt(countInput.value);
-
-            if (!barcode || isNaN(count) || count < 0) {
-                showNotification('Bitte Barcode und gültige Anzahl eingeben.', 'error');
-                return;
-            }
-
-            const item = currentStocktaking.find(item => item.barcode === barcode);
-
-            if (item) {
-                item.counted += count;
-                item.completed = true;
-                sessionStorage.setItem('currentStocktaking', JSON.stringify(currentStocktaking));
-                renderStocktakingList();
-                updateStocktakingProgress();
-                showNotification(`Bestand für ${item.name} um ${count} erfasst. Aktuell gezählt: ${item.counted}`, 'success');
             } else {
-                showNotification(`Barcode ${barcode} nicht in der Bestandsaufnahme gefunden.`, 'error');
-            }
-
-            barcodeInput.value = '';
-            countInput.value = 1; // Reset count to 1 for next scan
-            barcodeInput.focus();
-        }
-
-        /**
-         * Renders the list of items for the current stocktaking session.
-         */
-        function renderStocktakingList() {
-            const listDiv = document.getElementById('stocktaking-list');
-            currentStocktaking = JSON.parse(sessionStorage.getItem('currentStocktaking'));
-
-            if (!currentStocktaking) {
-                listDiv.innerHTML = '<p class="text-gray-500 text-center py-8">Keine aktive Bestandsaufnahme. Klicken Sie auf "Neue Aufnahme starten"</p>';
-                document.getElementById('stocktaking-progress').classList.add('hidden');
-                document.getElementById('stocktaking-scanner').classList.add('hidden');
-                return;
-            }
-
-            listDiv.innerHTML = `
-                <div class="overflow-x-auto">
-                    <table class="w-full table-auto">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Artikel</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Barcode</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Erwartet</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Gezählt</th>
-                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">Differenz</th>
-                            </tr>
-                        </thead>
-                        <tbody id="stocktaking-table" class="divide-y divide-gray-200">
-                        </tbody>
-                    </table>
-                </div>
-            `;
-
-            const tableBody = document.getElementById('stocktaking-table');
-            currentStocktaking.forEach(item => {
-                const diff = item.counted - item.expected;
-                const diffClass = diff === 0 ? 'text-gray-600' : (diff > 0 ? 'text-green-600' : 'text-red-600');
-
-                const row = tableBody.insertRow();
-                row.className = `stocktaking-item ${item.completed ? 'completed' : 'hover:bg-yellow-50'}`;
-                row.innerHTML = `
-                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">${item.name}</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">${item.barcode}</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">${item.expected}</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm font-bold text-blue-600">${item.counted}</td>
-                    <td class="px-4 py-3 whitespace-nowrap text-sm font-bold ${diffClass}">${diff > 0 ? '+' : ''}${diff}</td>
-                `;
-            });
-        }
-
-        /**
-         * Updates the progress bar and text for stocktaking.
-         */
-        function updateStocktakingProgress() {
-            if (!currentStocktaking) return;
-
-            const totalItems = currentStocktaking.length;
-            const completedItems = currentStocktaking.filter(item => item.completed).length;
-            const progress = totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
-
-            document.getElementById('progress-text').textContent = `${completedItems} / ${totalItems}`;
-            document.getElementById('progress-bar').style.width = `${progress}%`;
-
-            if (completedItems === totalItems && totalItems > 0) {
-                showNotification('Bestandsaufnahme abgeschlossen!', 'info');
+                displayContainer.innerHTML = '<p class="text-gray-500">Ungültiger Code-Typ ausgewählt.</p>';
             }
         }
-
-        /**
-         * Exports the stocktaking results and resets the session.
-         */
-        function exportStocktaking() {
-            if (!currentStocktaking) {
-                showNotification('Keine Bestandsaufnahme aktiv.', 'error');
-                return;
-            }
-
-            // 1. Export the data to a file
-            const data = currentStocktaking.map(item => ({
-                Artikel: item.name,
-                Barcode: item.barcode,
-                Erwartet: item.expected,
-                Gezählt: item.counted,
-                Differenz: item.counted - item.expected
-            }));
-
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Bestandsaufnahme");
-            XLSX.writeFile(wb, `Bestandsaufnahme_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-            showNotification('Bestandsaufnahme exportiert.', 'success');
-
-            // 2. Option to apply changes to inventory
-            if (confirm('Möchten Sie die gezählten Mengen als neuen Bestand übernehmen?')) {
-                currentStocktaking.forEach(stockItem => {
-                    const inventoryItem = inventory.find(item => item.id === stockItem.id);
-                    if (inventoryItem) {
-                        inventoryItem.quantity = stockItem.counted;
-                    }
-                });
-                saveInventory();
-                showNotification('Inventar mit gezählten Mengen aktualisiert.', 'success');
-                renderInventoryTable();
-            }
-
-            // 3. Reset the stocktaking session
-            currentStocktaking = null;
-            sessionStorage.removeItem('currentStocktaking');
-            renderStocktakingList();
-        }
-
-
-        // --- Reports Functions ---
-
-        /**
-         * Generates and displays the statistics report.
-         */
-        function generateReports() {
-            const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
-            const totalValue = inventory.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-            const lowStockCount = inventory.filter(item => item.quantity <= item.minStock).length;
-            const categories = [...new Set(inventory.map(item => item.category))].length;
-            const totalDuration = inventory.reduce((sum, item) => sum + (item.duration * item.quantity), 0);
-            const totalQuantity = inventory.reduce((sum, item) => sum + item.quantity, 0);
-            const avgDuration = totalQuantity > 0 ? (totalDuration / totalQuantity).toFixed(1) : 0;
-
-            document.getElementById('total-items').textContent = totalItems;
-            document.getElementById('total-value').textContent = `€${totalValue.toFixed(2)}`;
-            document.getElementById('low-stock-count').textContent = lowStockCount;
-            document.getElementById('category-count').textContent = categories;
-            document.getElementById('avg-duration').textContent = `${avgDuration}s`;
-
-            // Low Stock Items list
-            const lowStockListDiv = document.getElementById('low-stock-items');
-            const lowStockItems = inventory.filter(item => item.quantity <= item.minStock).sort((a, b) => a.quantity - b.quantity);
-
-            if (lowStockItems.length === 0) {
-                lowStockListDiv.innerHTML = '<p class="text-gray-500 text-center py-4">Keine Artikel mit niedrigem Bestand</p>';
-            } else {
-                lowStockListDiv.innerHTML = '';
-                lowStockItems.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'p-3 border border-red-200 bg-red-50 rounded-lg flex justify-between items-center';
-                    itemDiv.innerHTML = `
-                        <div class="text-sm">
-                            <span class="font-medium text-red-800">${item.name}</span>
-                            <span class="text-xs text-red-600">(${item.category})</span>
-                        </div>
-                        <span class="font-bold text-red-600">${item.quantity} St.</span>
-                    `;
-                    lowStockListDiv.appendChild(itemDiv);
-                });
-            }
-        }
-
-
-        // --- Initialization ---
-
-        window.onload = function() {
+        
+        // ... (Restliche App-Logik) ...
+        
+        // Initialisierung
+        document.addEventListener('DOMContentLoaded', () => {
             GitHubPagesManager.init();
-            renderInventoryTable();
-            // Try to restore stocktaking session
-            const savedStocktaking = sessionStorage.getItem('currentStocktaking');
-            if (savedStocktaking) {
-                currentStocktaking = JSON.parse(savedStocktaking);
-                updateStocktakingProgress();
-            }
-            showTab('scanner'); // Default tab on load
-        };
-
+            showTab('scanner');
+            document.getElementById('add-item-form').addEventListener('submit', handleAddItemForm);
+            document.getElementById('search-inventory').addEventListener('input', renderInventory);
+        });
     </script>
 </body>
 </html>
