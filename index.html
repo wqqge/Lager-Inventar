@@ -49,10 +49,10 @@
         .notification.error { background-color: #ef4444; }
         .notification.info { background-color: #3b82f6; }
         .image-preview {
-            max-width: 100px;
-            max-height: 100px;
+            max-width: 50px; /* Reduziert für Inventartabelle */
+            max-height: 50px;
             object-fit: cover;
-            border-radius: 8px;
+            border-radius: 4px;
         }
         .stocktaking-item {
             transition: all 0.3s ease;
@@ -363,8 +363,9 @@
                     <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Artikelbild</label>
                         <div class="flex items-center gap-4">
+                            <input type="file" id="item-image" accept="image/*" class="hidden" onchange="previewImage(event)" data-base64="">
+                            
                             <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-400 transition-colors flex-1">
-                                <input type="file" id="item-image" accept="image/*" class="hidden" onchange="previewImage(event)">
                                 <label for="item-image" class="cursor-pointer">
                                     <div class="text-gray-500 mb-2">
                                         <svg class="mx-auto h-8 w-8" stroke="currentColor" fill="none" viewBox="0 0 48 48">
@@ -375,7 +376,7 @@
                                 </label>
                             </div>
                             <div id="image-preview" class="hidden">
-                                <img id="preview-img" class="image-preview border-2 border-gray-200" alt="Vorschau">
+                                <img id="preview-img" class="image-preview border-2 border-gray-200" alt="Vorschau" style="max-width: 100px; max-height: 100px;">
                                 <button type="button" onclick="removeImage()" class="mt-2 text-red-600 text-sm hover:text-red-800">Entfernen</button>
                             </div>
                         </div>
@@ -401,7 +402,7 @@
                     <div>
                         <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Code-Typ</label>
-                            <select id="code-type" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <select id="code-type" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" onchange="generateCode()">
                                 <option value="qr">QR-Code</option>
                                 <option value="ean13">EAN-13 Barcode</option>
                                 <option value="code128">Code 128 Barcode</option>
@@ -411,19 +412,19 @@
 
                         <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Artikel auswählen</label>
-                            <select id="code-item-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <select id="code-item-select" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" onchange="generateCode()">
                                 <option value="">Artikel auswählen...</option>
                             </select>
                         </div>
 
                         <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Oder eigenen Code eingeben</label>
-                            <input type="text" id="custom-code" placeholder="Eigenen Code eingeben..." class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <input type="text" id="custom-code" placeholder="Eigenen Code eingeben..." class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" oninput="generateCode()">
                         </div>
 
                         <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Größe</label>
-                            <select id="code-size" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <select id="code-size" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" onchange="generateCode()">
                                 <option value="small">Klein (150px)</option>
                                 <option value="medium" selected>Mittel (250px)</option>
                                 <option value="large">Groß (400px)</option>
@@ -432,7 +433,7 @@
 
                         <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Etiketten-Layout</label>
-                            <select id="label-layout" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <select id="label-layout" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" onchange="generateCode()">
                                 <option value="simple">Nur Code</option>
                                 <option value="with-text">Code + Text</option>
                                 <option value="detailed">Detailliertes Etikett</option>
@@ -599,45 +600,13 @@
     </div>
 
     <script>
-        // GitHub Pages compatibility layer
-        const GitHubPagesManager = {
-            init: function() {
-                console.log('🎆 Pyrotechnik Lager Manager Pro - GitHub Pages Ready');
-                this.setupErrorHandling();
-                this.optimizeForGitHubPages();
-                loadCameraDevices(); 
-            },
-            setupErrorHandling: function() {
-                window.addEventListener('error', function(e) {
-                    console.error('Application Error:', e.error);
-                    showNotification('Ein Fehler ist aufgetreten. Bitte laden Sie die Seite neu.', 'error');
-                });
-                window.addEventListener('unhandledrejection', function(e) {
-                    console.error('Unhandled Promise Rejection:', e.reason);
-                    e.preventDefault();
-                });
-            },
-            optimizeForGitHubPages: function() {
-                // Ensure all external resources are loaded over HTTPS
-                const scripts = document.querySelectorAll('script[src]');
-                scripts.forEach(script => {
-                    if (script.src.startsWith('http://')) {
-                        script.src = script.src.replace('http://', 'https://');
-                    }
-                });
-                const meta = document.createElement('meta');
-                meta.name = 'github-pages-ready';
-                meta.content = 'true';
-                document.head.appendChild(meta);
-            }
-        };
-
         // Global variables
         let cameraStream = null;
         let codeReader = null;
         let isScanning = false;
         let scanningInterval = null;
         let currentStocktaking = null;
+        let importedData = []; // Globales Array für den CSV/Excel Import
 
         // Inventory loading
         let inventory = [];
@@ -651,7 +620,11 @@
             showNotification('Fehler beim Laden des Inventars. Daten möglicherweise beschädigt.', 'error');
         }
 
-        // Utility Functions
+        // --- UTILITY FUNCTIONS ---
+        function generateUniqueId() {
+            return 'item-' + Math.random().toString(36).substr(2, 9);
+        }
+
         function saveInventory() {
             try {
                 localStorage.setItem('pyrotechnikInventory', JSON.stringify(inventory));
@@ -691,9 +664,8 @@
                 tab.classList.add('hidden');
             });
             document.querySelectorAll('[id^="tab-"]').forEach(button => {
-                button.classList.remove('text-blue-600', 'border-blue-600');
+                button.classList.remove('text-blue-600', 'border-blue-600', 'border-b-2');
                 button.classList.add('text-gray-500', 'hover:text-blue-600');
-                button.classList.remove('border-b-2');
             });
 
             document.getElementById(`${tabId}-tab`).classList.remove('hidden');
@@ -717,6 +689,299 @@
 
         function sanitizeBarcode(barcode) {
             return String(barcode).trim().replace(/[^a-zA-Z0-9]/g, '');
+        }
+
+        // --- FILE UPLOAD (IMAGE) LOGIC ---
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                removeImage();
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                const base64Image = e.target.result;
+                const previewImg = document.getElementById('preview-img');
+                const imagePreviewDiv = document.getElementById('image-preview');
+                
+                // Speichern des Base64-Strings im Input-Element für die Formularverarbeitung
+                document.getElementById('item-image').dataset.base64 = base64Image;
+
+                previewImg.src = base64Image;
+                imagePreviewDiv.classList.remove('hidden');
+                showNotification('Bildvorschau geladen.', 'success');
+            };
+
+            reader.onerror = function() {
+                showNotification('Fehler beim Lesen der Bilddatei.', 'error');
+                removeImage();
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        function removeImage() {
+            document.getElementById('item-image').value = ''; 
+            document.getElementById('item-image').dataset.base64 = ''; 
+            document.getElementById('preview-img').src = '';
+            document.getElementById('image-preview').classList.add('hidden');
+        }
+
+        // --- IMPORT (CSV/EXCEL) LOGIC ---
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.name.match(/\.(csv|xlsx|xls)$/i)) {
+                showNotification('Ungültiges Dateiformat. Bitte verwenden Sie .csv, .xlsx oder .xls.', 'error');
+                event.target.value = ''; 
+                return;
+            }
+
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    processExcelFile(e.target.result);
+                } catch (error) {
+                    console.error('Fehler bei der Verarbeitung der Datei:', error);
+                    showNotification('Fehler beim Lesen der Datei. Gültiges Format prüfen.', 'error');
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processExcelFile(data) {
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
+
+            if (rawData.length < 2) { // Muss Header + mindestens eine Datenzeile haben
+                showNotification('Datei ist leer oder enthält nur Header.', 'error');
+                return;
+            }
+
+            const headers = rawData[0];
+            const sampleRows = rawData.slice(1, 6);
+            
+            const detectedMappings = getColumnMappings(headers);
+            
+            importedData = rawData.slice(1); 
+            
+            showColumnMapping(headers, detectedMappings, sampleRows);
+        }
+
+        function getColumnMappings(headers) {
+            const mappings = {};
+            
+            const fieldMappings = {
+                name: ['artikelname', 'name', 'bezeichnung', 'item', 'product'],
+                barcode: ['barcode', 'ean', 'code', 'artikel-nr', 'artikelnr', 'artikelnummer', 'id'],
+                quantity: ['anzahl', 'bestand', 'menge', 'stück', 'stock', 'qty', 'quantity'],
+                price: ['preis', 'kosten', 'vk-preis', 'verkaufspreis', 'price', 'cost'],
+                category: ['kategorie', 'gruppe', 'typ', 'category', 'group', 'type'],
+                minStock: ['mindestbestand', 'min-bestand', 'minimum', 'min', 'minstock'],
+                description: ['beschreibung', 'details', 'info', 'description', 'notes'],
+                duration: ['dauer', 'effektdauer', 'brenndauer', 'duration', 'time'],
+                effect: ['effekt', 'effekttyp', 'effect', 'type']
+            };
+            
+            headers.forEach((header, index) => {
+                const normalizedHeader = String(header).toLowerCase().trim();
+                
+                for (const [field, keywords] of Object.entries(fieldMappings)) {
+                    if (keywords.some(keyword => normalizedHeader.includes(keyword))) {
+                        mappings[field] = index;
+                        break;
+                    }
+                }
+            });
+            
+            return mappings;
+        }
+        
+        function showColumnMapping(headers, detectedMappings, sampleRows) {
+            const mappingGrid = document.getElementById('column-mapping-grid');
+            const columnMappingDiv = document.getElementById('column-mapping');
+            mappingGrid.innerHTML = ''; 
+
+            const fields = [
+                { key: 'name', label: 'Artikelname', required: true },
+                { key: 'barcode', label: 'Barcode', required: true },
+                { key: 'quantity', label: 'Anzahl', required: true },
+                { key: 'price', label: 'Preis', required: true },
+                { key: 'category', label: 'Kategorie', required: false },
+                { key: 'minStock', label: 'Mindestbestand', required: false },
+                { key: 'description', label: 'Beschreibung', required: false },
+                { key: 'duration', label: 'Effektdauer', required: false },
+                { key: 'effect', label: 'Effekttyp', required: false },
+            ];
+
+            fields.forEach(field => {
+                const detectedIndex = detectedMappings[field.key];
+                
+                const select = document.createElement('select');
+                select.id = `map-${field.key}`;
+                select.className = 'w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500';
+                select.required = field.required;
+                select.dataset.fieldKey = field.key;
+
+                const optionDefault = document.createElement('option');
+                optionDefault.value = '';
+                optionDefault.textContent = field.required ? `* ${field.label} (Erforderlich)` : field.label + ' (Nicht verwenden)';
+                select.appendChild(optionDefault);
+
+                headers.forEach((header, index) => {
+                    const sampleValue = sampleRows[0] ? (sampleRows[0][index] || 'Leer') : 'N/A';
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `${header} (Bsp.: ${sampleValue})`;
+                    if (index === detectedIndex) {
+                        option.selected = true; 
+                    }
+                    select.appendChild(option);
+                });
+
+                const div = document.createElement('div');
+                div.className = 'flex flex-col';
+                div.innerHTML = `<label for="map-${field.key}" class="text-sm font-medium text-gray-700 mb-1">${field.label}</label>`;
+                div.appendChild(select);
+
+                mappingGrid.appendChild(div);
+            });
+
+            columnMappingDiv.classList.remove('hidden');
+            showNotification(`${importedData.length} Datenzeilen gefunden. Bitte Zuordnung prüfen.`, 'info', 5000);
+        }
+
+        function confirmImport() {
+            const mappings = {};
+            let requiredMissing = false;
+
+            document.querySelectorAll('#column-mapping-grid select').forEach(select => {
+                const fieldKey = select.dataset.fieldKey;
+                const colIndex = select.value;
+
+                if (select.required && colIndex === '') {
+                    requiredMissing = true;
+                    select.classList.add('border-red-500'); 
+                } else {
+                    select.classList.remove('border-red-500');
+                    if (colIndex !== '') {
+                        mappings[fieldKey] = parseInt(colIndex, 10);
+                    }
+                }
+            });
+
+            if (requiredMissing) {
+                showNotification('Bitte alle Pflichtfelder zuordnen (*).', 'error');
+                return;
+            }
+
+            const newItems = [];
+            let importCount = 0;
+
+            importedData.forEach((row) => {
+                // Konvertiert die importierten Werte sauber
+                const quantity = parseInt(row[mappings.quantity]) || 0;
+                const priceValue = String(row[mappings.price] || 0).replace(',', '.');
+                const price = parseFloat(priceValue).toFixed(2);
+                const durationValue = String(row[mappings.duration] || 0).replace(',', '.');
+                const duration = parseFloat(durationValue) || 0;
+                
+                const newItem = {
+                    id: generateUniqueId(),
+                    name: String(row[mappings.name] || '').trim(),
+                    barcode: String(row[mappings.barcode] || '').trim(),
+                    quantity: quantity,
+                    price: price,
+                    category: String(row[mappings.category] || 'Sonstiges').trim(),
+                    minStock: parseInt(row[mappings.minStock]) || 5,
+                    description: String(row[mappings.description] || '').trim(),
+                    duration: duration,
+                    effect: String(row[mappings.effect] || '').trim(),
+                    image: '',
+                    addedDate: new Date().toISOString().split('T')[0]
+                };
+
+                if (newItem.name && newItem.barcode) {
+                    newItems.push(newItem);
+                    importCount++;
+                }
+            });
+
+            inventory = [...inventory, ...newItems];
+            saveInventory();
+            showNotification(`✅ Erfolgreich ${importCount} Artikel importiert und zum Inventar hinzugefügt!`, 'success', 5000);
+            
+            cancelImport();
+            showTab('inventory');
+        }
+
+        function cancelImport() {
+            importedData = [];
+            document.getElementById('csv-file').value = '';
+            document.getElementById('column-mapping').classList.add('hidden');
+        }
+
+        // --- ADD ITEM LOGIC (Hinzugefügt für Funktion) ---
+        function handleAddItemForm(event) {
+            event.preventDefault();
+
+            const newId = generateUniqueId();
+            const name = document.getElementById('item-name').value.trim();
+            const barcode = document.getElementById('item-barcode').value.trim();
+            const quantity = parseInt(document.getElementById('item-quantity').value);
+            const price = parseFloat(document.getElementById('item-price').value).toFixed(2);
+            const category = document.getElementById('item-category').value;
+            const minStock = parseInt(document.getElementById('item-min-stock').value);
+            const duration = parseFloat(document.getElementById('item-duration').value) || 0;
+            const effect = document.getElementById('item-effect').value;
+            const description = document.getElementById('item-description').value.trim();
+            const imageInput = document.getElementById('item-image');
+            const imageBase64 = imageInput.dataset.base64 || '';
+
+            if (!name || !barcode || isNaN(quantity) || isNaN(price)) {
+                showNotification('Bitte alle Pflichtfelder (*) ausfüllen.', 'error');
+                return;
+            }
+
+            const newItem = {
+                id: newId,
+                name: name,
+                barcode: barcode,
+                quantity: quantity,
+                price: price,
+                category: category,
+                minStock: minStock,
+                description: description,
+                duration: duration,
+                effect: effect,
+                image: imageBase64,
+                addedDate: new Date().toISOString().split('T')[0]
+            };
+
+            const existingItemIndex = inventory.findIndex(i => sanitizeBarcode(i.barcode) === sanitizeBarcode(newItem.barcode));
+            
+            if (existingItemIndex !== -1) {
+                // Bestand erhöhen
+                inventory[existingItemIndex].quantity += newItem.quantity;
+                showNotification(`Bestand für ${name} erhöht.`, 'info');
+            } else {
+                inventory.push(newItem);
+                showNotification(`Artikel "${name}" erfolgreich hinzugefügt!`, 'success');
+            }
+
+            saveInventory();
+            
+            document.getElementById('add-item-form').reset();
+            removeImage();
+            showTab('inventory');
         }
         
         // --- SCANNER LOGIC (Fixed for black screen/permissions) ---
@@ -757,14 +1022,15 @@
                     });
                     
                     if (videoInputDevices.length > 0) {
-                        selectElement.onchange = stopScanner;
+                        // Bei Wechsel der Kamera muss der Scanner gestoppt werden
+                        selectElement.onchange = stopScanner; 
                     }
 
                 })
                 .catch(err => {
                     console.error('Fehler beim Laden der Kameras:', err);
                     selectElement.innerHTML = '<option value="">Fehler beim Laden (Berechtigung?)!</option>';
-                    showNotification('Kamera-Fehler: Bitte die Browser-Berechtigung prüfen!', 'error');
+                    showNotification('Kamera-Fehler: Bitte die Browser-Berechtigung prüfen!', 'error', 5000);
                 });
         }
 
@@ -786,6 +1052,7 @@
             document.getElementById('scanner-placeholder').classList.add('hidden');
             document.getElementById('scan-overlay').classList.remove('hidden');
 
+            // WICHTIG: decodeFromVideoDevice startet den Stream und gibt das Ergebnis an den Callback
             codeReader.decodeFromVideoDevice(selectedDeviceId, 'camera-video', (result, err) => {
                 if (result) {
                     handleScanResult(result.text);
@@ -837,8 +1104,7 @@
                 startScanner();
             }
         }
-        
-        // Dummy functions for the rest of the app logic (needs full implementation if not included above)
+
         function handleScanResult(barcode) {
              const item = inventory.find(i => sanitizeBarcode(i.barcode) === sanitizeBarcode(barcode));
              const resultElement = document.getElementById('scan-result');
@@ -876,6 +1142,9 @@
                  image.src = e.target.result;
                  image.onload = function() {
                      try {
+                         // Stopft den Live-Scanner, falls er aktiv war
+                         if (isScanning) stopScanner(); 
+
                          if (!codeReader) { codeReader = new ZXing.BrowserMultiFormatReader(); }
                          codeReader.decodeFromImage(image)
                              .then(result => handleScanResult(result.text))
@@ -900,7 +1169,48 @@
              }
          }
 
-        // --- BARCODE GENERATOR LOGIC (Fixed for EAN-13 validation) ---
+        // --- INVENTORY / REPORTS / GENERATOR (Minimal-Implementierung) ---
+        function renderInventory() {
+            const tableBody = document.getElementById('inventory-table');
+            const searchValue = document.getElementById('search-inventory').value.toLowerCase();
+            tableBody.innerHTML = '';
+            
+            const filteredInventory = inventory.filter(item => 
+                item.name.toLowerCase().includes(searchValue) ||
+                item.barcode.includes(searchValue) ||
+                item.category.toLowerCase().includes(searchValue)
+            );
+
+            if (filteredInventory.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-gray-500">Keine Artikel gefunden.</td></tr>`;
+                return;
+            }
+
+            filteredInventory.forEach(item => {
+                const row = document.createElement('tr');
+                const isLowStock = item.quantity <= item.minStock;
+                const status = isLowStock 
+                    ? '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Niedrig</span>' 
+                    : '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">OK</span>';
+
+                row.className = isLowStock ? 'hover:bg-red-50 bg-red-50/50' : 'hover:bg-gray-50';
+                row.innerHTML = `
+                    <td class="px-4 py-3">${item.image ? `<img src="${item.image}" class="image-preview" alt="Bild">` : 'N/A'}</td>
+                    <td class="px-4 py-3 font-medium text-gray-900">${item.name}</td>
+                    <td class="px-4 py-3 text-sm">${item.barcode}</td>
+                    <td class="px-4 py-3 text-lg font-bold">${item.quantity}</td>
+                    <td class="px-4 py-3 text-sm">€${item.price}</td>
+                    <td class="px-4 py-3 text-sm">${item.duration}s</td>
+                    <td class="px-4 py-3">${status}</td>
+                    <td class="px-4 py-3">
+                        <button onclick="editItem('${item.id}')" class="text-blue-600 hover:text-blue-900">Bearbeiten</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        function updateReports() { /* Statistische Daten aktualisieren */ }
         function populateCodeItemSelect() {
             const select = document.getElementById('code-item-select');
             select.innerHTML = '<option value="">Artikel auswählen...</option>';
@@ -910,6 +1220,7 @@
                 option.textContent = `${item.name} (${item.barcode})`;
                 select.appendChild(option);
             });
+            generateCode(); // Erneute Generierung bei Inventar-Änderung
         }
         
         function generateCode() {
@@ -929,7 +1240,6 @@
             
             if (!codeValue) {
                 displayContainer.innerHTML = '<p class="text-gray-500">Wählen Sie einen Artikel oder geben Sie einen Code ein</p>';
-                showNotification('Bitte einen Code-Wert eingeben oder Artikel auswählen.', 'info');
                 return;
             }
 
@@ -938,7 +1248,6 @@
             const size = sizeMap[selectedSize];
             
             const labelLayout = document.getElementById('label-layout').value;
-            
             let labelText = '';
             if (labelLayout !== 'simple' && selectedItem) {
                 labelText = selectedItem.name;
@@ -946,16 +1255,15 @@
                     labelText += ` | Bestand: ${selectedItem.quantity}`;
                 }
             }
-
+            
+            // Logik zur Code-Generierung
             if (codeType === 'qr') {
                 const canvas = document.createElement('canvas');
                 canvas.id = 'generated-qrcode';
                 displayContainer.appendChild(canvas);
 
                 QRCode.toCanvas(canvas, codeValue, { errorCorrectionLevel: 'H', width: size, margin: 2 }, function (error) {
-                    if (error) {
-                        displayContainer.innerHTML = '<p class="text-red-500">Fehler beim Generieren des QR-Codes.</p>';
-                    } else {
+                    if (!error) {
                         codeActions.classList.remove('hidden');
                         if (labelText) {
                             const textDiv = document.createElement('div');
@@ -967,11 +1275,9 @@
                 });
 
             } else if (codeType === 'ean13') {
-                // EAN-13 Fix: Validation for 12 or 13 digits
                 const numericCode = codeValue.replace(/[^0-9]/g, '');
                 if (!/^\d{12}$/.test(numericCode) && !/^\d{13}$/.test(numericCode)) {
                     displayContainer.innerHTML = `<p class="text-red-500">Fehler: EAN-13 erfordert **genau 12 oder 13 Ziffern**.</p>`;
-                    showNotification('EAN-13-Code ist ungültig (12/13 Ziffern benötigt).', 'error', 6000);
                     return;
                 }
                 codeValue = numericCode;
@@ -982,18 +1288,12 @@
 
                 try {
                     JsBarcode("#generated-barcode", codeValue, {
-                        format: "ean13",
-                        displayValue: true,
-                        margin: 10,
-                        width: size / 250 * 2,
-                        height: size / 2.5,
-                        text: labelText,
-                        textMargin: 5
+                        format: "ean13", displayValue: true, margin: 10, width: size / 250 * 2, height: size / 2.5,
+                        text: labelText, textMargin: 5
                     });
                     codeActions.classList.remove('hidden');
                 } catch (e) {
                     displayContainer.innerHTML = `<p class="text-red-500">Fehler beim Generieren des Barcodes. ${e.message}</p>`;
-                    showNotification('Fehler beim Generieren des Barcodes. Code-Wert prüfen!', 'error');
                 }
                 
             } else if (codeType === 'code128' || codeType === 'code39') {
@@ -1003,55 +1303,78 @@
 
                 try {
                     JsBarcode("#generated-barcode", codeValue, {
-                        format: codeType,
-                        displayValue: true,
-                        margin: 10,
-                        width: size / 250 * 2, 
-                        height: size / 3,
-                        text: labelText,
-                        textMargin: 5
+                        format: codeType, displayValue: true, margin: 10, width: size / 250 * 2, height: size / 3,
+                        text: labelText, textMargin: 5
                     });
                     codeActions.classList.remove('hidden');
                 } catch (e) {
                     displayContainer.innerHTML = `<p class="text-red-500">Fehler beim Generieren des Barcodes. ${e.message}</p>`;
-                    showNotification('Fehler beim Generieren des Barcodes. Code-Wert prüfen!', 'error');
                 }
-            } else {
-                displayContainer.innerHTML = '<p class="text-gray-500">Ungültiger Code-Typ ausgewählt.</p>';
             }
         }
         
-        // Dummy implementations for functions referenced in HTML (for completeness)
-        function renderInventory() { /* ... implementation ... */ }
-        function updateReports() { /* ... implementation ... */ }
-        function handleAddItemForm(event) { event.preventDefault(); /* ... implementation ... */ }
-        function previewImage(event) { /* ... implementation ... */ }
-        function removeImage() { /* ... implementation ... */ }
-        function exportToCloud() { showNotification('Cloud Backup nicht implementiert', 'info'); }
-        function importFromCloud() { showNotification('Cloud Import nicht implementiert', 'info'); }
-        function exportInventory() { showNotification('Export erfolgreich', 'success'); }
-        function renderStocktakingList() { /* ... implementation ... */ }
-        function startStocktaking() { showNotification('Bestandsaufnahme gestartet', 'success'); }
-        function exportStocktaking() { showNotification('Bestandsaufnahme exportiert', 'success'); }
-        function recordStockCount() { showNotification('Bestand erfasst', 'success'); }
-        function downloadCode() { showNotification('Download nicht implementiert', 'info'); }
-        function copyCodeToClipboard() { showNotification('In Zwischenablage kopiert', 'success'); }
-        function generateBatchCodes() { showNotification('Stapel-Generierung gestartet', 'success'); }
-        function printCodes() { showNotification('Druckfunktion gestartet', 'success'); }
-        function handleFileSelect(event) { showNotification('Datei hochgeladen - Zuordnung erforderlich', 'info'); }
-        function confirmImport() { showNotification('Import abgeschlossen', 'success'); }
-        function cancelImport() { showNotification('Import abgebrochen', 'info'); }
-        function downloadTemplate() { showNotification('Vorlage wird heruntergeladen', 'success'); }
-        function loadSampleData() { showNotification('Beispieldaten geladen', 'success'); saveInventory(); }
-        function changeStock(id) { showNotification(`Bestand für ${id} anpassen...`, 'info'); }
+        // --- DUMMY IMPLEMENTATIONS (für die Vollständigkeit der Funktionen) ---
+        function renderStocktakingList() { /* Bestandsliste anzeigen */ }
+        function editItem(id) { showNotification(`Artikel ${id} bearbeiten...`, 'info'); }
+        function exportToCloud() { showNotification('Cloud Backup ist nicht implementiert (Placeholder)', 'info'); }
+        function importFromCloud() { showNotification('Cloud Import ist nicht implementiert (Placeholder)', 'info'); }
+        function exportInventory() { 
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "ID,Name,Barcode,Anzahl,Preis,Kategorie,Mindestbestand,Beschreibung,Effektdauer,Effekttyp,Hinzugefügt\n";
+            inventory.forEach(item => {
+                csvContent += `${item.id},"${item.name.replace(/"/g, '""')}","${item.barcode}",${item.quantity},${item.price},"${item.category}",${item.minStock},"${item.description.replace(/"/g, '""')}",${item.duration},"${item.effect}",${item.addedDate}\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "pyrotechnik_inventar.csv");
+            document.body.appendChild(link); 
+            link.click(); 
+            document.body.removeChild(link);
+            showNotification('Inventar als CSV exportiert!', 'success');
+        }
+        function startStocktaking() { showNotification('Bestandsaufnahme gestartet (Placeholder)', 'success'); }
+        function exportStocktaking() { showNotification('Bestandsaufnahme exportiert (Placeholder)', 'success'); }
+        function recordStockCount() { showNotification('Bestand erfasst (Placeholder)', 'success'); }
+        function downloadCode() { showNotification('Download nicht implementiert (Placeholder)', 'info'); }
+        function copyCodeToClipboard() { navigator.clipboard.writeText(codeValue); showNotification('Code in Zwischenablage kopiert (Placeholder)', 'success'); }
+        function generateBatchCodes() { showNotification('Stapel-Generierung gestartet (Placeholder)', 'success'); }
+        function printCodes() { showNotification('Druckfunktion gestartet (Placeholder)', 'success'); }
+        function downloadTemplate() { 
+            const templateContent = "Name,Barcode,Anzahl,Preis,Kategorie,Mindestbestand,Beschreibung,Effektdauer,Effekttyp\nExample Rakete,123456789012,100,2.50,Raketen,5,Steigt hoch und explodiert,5,Goldene Funken";
+            const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(templateContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", csvContent);
+            link.setAttribute("download", "import_vorlage_pyrotechnik.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showNotification('Excel-Vorlage heruntergeladen', 'success'); 
+        }
+        function loadSampleData() { 
+            inventory = [
+                { id: generateUniqueId(), name: 'Feuerwerksbatterie "Mega-Blitz"', barcode: '426012345001', quantity: 25, price: '49.99', category: 'Batterien', minStock: 3, description: '25 Schuss, F2, Fächerung.', duration: 35, effect: 'Bunte Sterne', image: '', addedDate: '2025-09-01' },
+                { id: generateUniqueId(), name: 'Goldregen Fontäne', barcode: '400583200101', quantity: 15, price: '4.50', category: 'Fontänen', minStock: 5, description: 'Langanhaltender Goldregen-Effekt.', duration: 60, effect: 'Goldene Funken', image: '', addedDate: '2025-09-05' },
+                { id: generateUniqueId(), name: 'Knall-Salut Rakete', barcode: '426012345100', quantity: 4, price: '1.99', category: 'Raketen', minStock: 5, description: 'Steigt auf mit lautem Knall.', duration: 3, effect: 'Knalleffekt', image: '', addedDate: '2025-09-10' },
+            ];
+            saveInventory(); 
+            showNotification('Beispieldaten geladen', 'success'); 
+        }
+        function changeStock(id) { showNotification(`Bestand für ${id} anpassen... (Placeholder)`, 'info'); }
 
 
         // Initialisierung beim Laden der Seite
         document.addEventListener('DOMContentLoaded', () => {
-            GitHubPagesManager.init();
+            loadCameraDevices();
             showTab('scanner');
             document.getElementById('add-item-form').addEventListener('submit', handleAddItemForm);
             document.getElementById('search-inventory').addEventListener('input', renderInventory);
+            
+            // Behebt den Initialisierungsfehler (wenn das Inventar leer ist)
+            if (inventory.length > 0) {
+                renderInventory();
+                populateCodeItemSelect();
+            }
         });
     </script>
 </body>
