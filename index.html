@@ -1052,7 +1052,10 @@
                 this.reset();
                 delete this.dataset.editId;
                 const submitBtn = this.querySelector('button[type="submit"]');
-                if (submitBtn) submitBtn.textContent = 'Artikel hinzufügen';
+                if (submitBtn) {
+                    submitBtn.textContent = '➕ Artikel hinzufügen';
+                    submitBtn.className = 'bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors';
+                }
                 
                 showTab('inventory');
             });
@@ -1146,40 +1149,53 @@
 
         function editItem(itemId) {
             const item = inventory.find(item => item.id === itemId);
-            if (!item) return;
+            if (!item) {
+                showNotification('Artikel nicht gefunden', 'error');
+                return;
+            }
+            
+            console.log('Bearbeite Artikel:', item);
             
             showTab('add-item');
             
-            const fields = [
-                'item-name', 'item-barcode', 'item-quantity', 'item-price',
-                'item-category', 'item-min-stock', 'item-description'
-            ];
-            
-            fields.forEach(fieldId => {
-                const element = document.getElementById(fieldId);
-                if (element) {
-                    const fieldName = fieldId.replace('item-', '').replace('-', '');
-                    let value = '';
-                    
-                    switch(fieldName) {
-                        case 'name': value = item.name || ''; break;
-                        case 'barcode': value = item.barcode || ''; break;
-                        case 'quantity': value = item.quantity || 0; break;
-                        case 'price': value = item.price || 0; break;
-                        case 'category': value = item.category || 'Sonstiges'; break;
-                        case 'minstock': value = item.minStock || 0; break;
-                        case 'description': value = item.description || ''; break;
-                    }
-                    
-                    element.value = value;
+            // Warte kurz bis Tab gewechselt ist
+            setTimeout(() => {
+                // Alle Felder mit korrekten Werten füllen
+                const nameField = document.getElementById('item-name');
+                const barcodeField = document.getElementById('item-barcode');
+                const quantityField = document.getElementById('item-quantity');
+                const priceField = document.getElementById('item-price');
+                const categoryField = document.getElementById('item-category');
+                const minStockField = document.getElementById('item-min-stock');
+                const descriptionField = document.getElementById('item-description');
+                
+                if (nameField) nameField.value = item.name || '';
+                if (barcodeField) barcodeField.value = item.barcode || '';
+                if (quantityField) quantityField.value = item.quantity || 0;
+                if (priceField) priceField.value = item.price || 0;
+                if (categoryField) categoryField.value = item.category || 'Sonstiges';
+                if (minStockField) minStockField.value = item.minStock || 0;
+                if (descriptionField) descriptionField.value = item.description || '';
+                
+                // Form für Bearbeitung konfigurieren
+                const form = document.getElementById('add-item-form');
+                const submitBtn = form?.querySelector('button[type="submit"]');
+                
+                if (form) {
+                    form.dataset.editId = itemId;
+                    console.log('Edit ID gesetzt:', itemId);
                 }
-            });
-            
-            const form = document.getElementById('add-item-form');
-            const submitBtn = form?.querySelector('button[type="submit"]');
-            
-            if (form) form.dataset.editId = itemId;
-            if (submitBtn) submitBtn.textContent = 'Artikel aktualisieren';
+                
+                if (submitBtn) {
+                    submitBtn.textContent = '✏️ Artikel aktualisieren';
+                    submitBtn.className = 'bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 transition-colors';
+                }
+                
+                // Fokus auf Name-Feld setzen
+                if (nameField) nameField.focus();
+                
+                showNotification(`Bearbeite: ${item.name}`, 'info');
+            }, 100);
         }
 
         function deleteItem(itemId) {
@@ -1597,5 +1613,5 @@
             }
         });
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3a2b4656718c9',t:'MTc1OTczNzczNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3b2dc9308dc91',t:'MTc1OTczODM5OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
