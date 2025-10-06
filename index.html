@@ -344,6 +344,33 @@
                     throw new Error('GitHub nicht konfiguriert');
                 }
                 
+                // Verbindung testen
+                try {
+                    const testResponse = await fetch(`https://api.github.com/repos/${this.repo}`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Accept': 'application/vnd.github+json',
+                            'X-GitHub-Api-Version': '2022-11-28'
+                        },
+                        timeout: 10000
+                    });
+                    
+                    if (!testResponse.ok) {
+                        if (testResponse.status === 401) {
+                            throw new Error('GitHub Token ungültig oder abgelaufen');
+                        } else if (testResponse.status === 404) {
+                            throw new Error('Repository nicht gefunden oder kein Zugriff');
+                        } else {
+                            throw new Error(`Repository-Zugriff fehlgeschlagen (${testResponse.status})`);
+                        }
+                    }
+                } catch (error) {
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        throw new Error('Keine Internetverbindung oder GitHub nicht erreichbar');
+                    }
+                    throw error;
+                }
+                
                 const data = {
                     inventory: inventory,
                     lastSync: new Date().toISOString(),
@@ -351,7 +378,7 @@
                         userAgent: navigator.userAgent,
                         timestamp: Date.now()
                     },
-                    version: '2.1'
+                    version: '2.2'
                 };
                 
                 // UTF-8 sicheres Base64 Encoding
@@ -363,17 +390,24 @@
                 try {
                     const response = await fetch(`https://api.github.com/repos/${this.repo}/contents/${this.fileName}`, {
                         headers: {
-                            'Authorization': `token ${this.token}`,
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
+                            'Authorization': `Bearer ${this.token}`,
+                            'Accept': 'application/vnd.github+json',
+                            'X-GitHub-Api-Version': '2022-11-28'
+                        },
+                        timeout: 10000
                     });
                     
                     if (response.ok) {
                         const fileInfo = await response.json();
                         sha = fileInfo.sha;
+                    } else if (response.status !== 404) {
+                        throw new Error(`Datei-Info abrufen fehlgeschlagen (${response.status})`);
                     }
                 } catch (error) {
-                    console.log('Datei existiert noch nicht');
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        throw new Error('Verbindung zu GitHub unterbrochen');
+                    }
+                    console.log('Datei existiert noch nicht oder Fehler beim Abrufen:', error.message);
                 }
                 
                 // Datei hochladen
@@ -390,16 +424,26 @@
                 const uploadResponse = await fetch(`https://api.github.com/repos/${this.repo}/contents/${this.fileName}`, {
                     method: 'PUT',
                     headers: {
-                        'Authorization': `token ${this.token}`,
+                        'Authorization': `Bearer ${this.token}`,
                         'Content-Type': 'application/json',
-                        'Accept': 'application/vnd.github.v3+json'
+                        'Accept': 'application/vnd.github+json',
+                        'X-GitHub-Api-Version': '2022-11-28'
                     },
-                    body: JSON.stringify(uploadData)
+                    body: JSON.stringify(uploadData),
+                    timeout: 15000
                 });
                 
                 if (!uploadResponse.ok) {
-                    const error = await uploadResponse.json();
-                    throw new Error(`GitHub Upload Fehler: ${error.message}`);
+                    let errorMessage = `Upload fehlgeschlagen (${uploadResponse.status})`;
+                    try {
+                        const errorData = await uploadResponse.json();
+                        if (errorData.message) {
+                            errorMessage = errorData.message;
+                        }
+                    } catch (e) {
+                        // Ignore JSON parse error
+                    }
+                    throw new Error(errorMessage);
                 }
                 
                 return await uploadResponse.json();
@@ -410,26 +454,56 @@
                     throw new Error('GitHub nicht konfiguriert');
                 }
                 
-                const response = await fetch(`https://api.github.com/repos/${this.repo}/contents/${this.fileName}`, {
-                    headers: {
-                        'Authorization': `token ${this.token}`,
-                        'Accept': 'application/vnd.github.v3+json'
+                try {
+                    const response = await fetch(`https://api.github.com/repos/${this.repo}/contents/${this.fileName}`, {
+                        headers: {
+                            'Authorization': `Bearer ${this.token}`,
+                            'Accept': 'application/vnd.github+json',
+                            'X-GitHub-Api-Version': '2022-11-28'
+                        },
+                        timeout: 10000
+                    });
+                    
+                    if (!response.ok) {
+                        if (response.status === 401) {
+                            throw new Error('GitHub Token ungültig oder abgelaufen');
+                        } else if (response.status === 404) {
+                            throw new Error('Keine Backup-Datei gefunden');
+                        } else {
+                            throw new Error(`Download fehlgeschlagen (${response.status})`);
+                        }
                     }
-                });
-                
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        throw new Error('Keine Backup-Datei gefunden');
+                    
+                    const fileInfo = await response.json();
+                    
+                    if (!fileInfo.content) {
+                        throw new Error('Datei-Inhalt ist leer');
                     }
-                    throw new Error(`GitHub Download Fehler: ${response.status}`);
+                    
+                    // UTF-8 sicheres Base64 Decoding
+                    const content = decodeURIComponent(escape(atob(fileInfo.content.replace(/\s/g, ''))));
+                    const data = JSON.parse(content);
+                    
+                    // Validierung der heruntergeladenen Daten
+                    if (!data || typeof data !== 'object') {
+                        throw new Error('Ungültige Datenstruktur');
+                    }
+                    
+                    if (!Array.isArray(data.inventory)) {
+                        throw new Error('Inventar-Daten sind ungültig');
+                    }
+                    
+                    return data;
+                    
+                } catch (error) {
+                    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        throw new Error('Keine Internetverbindung oder GitHub nicht erreichbar');
+                    }
+                    if (error.name === 'SyntaxError') {
+                        throw new Error('Backup-Datei ist beschädigt oder ungültig');
+                    }
+                    throw error;
                 }
-                
-                const fileInfo = await response.json();
-                // UTF-8 sicheres Base64 Decoding
-                const content = decodeURIComponent(escape(atob(fileInfo.content)));
-                const data = JSON.parse(content);
-                
-                return data;
             }
             
             async autoSync() {
@@ -637,9 +711,31 @@
 
         async function exportToCloud() {
             try {
-                if (!githubSync.token) {
+                if (!githubSync.token || !githubSync.repo) {
                     showGitHubConfig();
                     return;
+                }
+                
+                // Verbindungstest vor Upload
+                showNotification('Teste GitHub-Verbindung...', 'info');
+                
+                try {
+                    const testResponse = await fetch('https://api.github.com/user', {
+                        headers: {
+                            'Authorization': `Bearer ${githubSync.token}`,
+                            'Accept': 'application/vnd.github+json'
+                        },
+                        timeout: 5000
+                    });
+                    
+                    if (!testResponse.ok) {
+                        throw new Error(`GitHub-Authentifizierung fehlgeschlagen (${testResponse.status})`);
+                    }
+                } catch (testError) {
+                    if (testError.name === 'TypeError' && testError.message.includes('fetch')) {
+                        throw new Error('Keine Internetverbindung - bitte Netzwerk prüfen');
+                    }
+                    throw testError;
                 }
                 
                 showNotification('Synchronisiere mit GitHub...', 'info');
@@ -650,15 +746,46 @@
                 
             } catch (error) {
                 console.error('GitHub Upload Error:', error);
-                showNotification(`GitHub Fehler: ${error.message}`, 'error');
+                
+                let userMessage = error.message;
+                if (error.message.includes('Failed to fetch')) {
+                    userMessage = 'Keine Internetverbindung oder GitHub nicht erreichbar';
+                } else if (error.message.includes('NetworkError')) {
+                    userMessage = 'Netzwerkfehler - bitte Verbindung prüfen';
+                }
+                
+                showNotification(`GitHub Fehler: ${userMessage}`, 'error');
+                updateSyncStatus('❌ Sync fehlgeschlagen');
             }
         }
 
         async function importFromCloud() {
             try {
-                if (!githubSync.token) {
+                if (!githubSync.token || !githubSync.repo) {
                     showGitHubConfig();
                     return;
+                }
+                
+                // Verbindungstest vor Download
+                showNotification('Teste GitHub-Verbindung...', 'info');
+                
+                try {
+                    const testResponse = await fetch('https://api.github.com/user', {
+                        headers: {
+                            'Authorization': `Bearer ${githubSync.token}`,
+                            'Accept': 'application/vnd.github+json'
+                        },
+                        timeout: 5000
+                    });
+                    
+                    if (!testResponse.ok) {
+                        throw new Error(`GitHub-Authentifizierung fehlgeschlagen (${testResponse.status})`);
+                    }
+                } catch (testError) {
+                    if (testError.name === 'TypeError' && testError.message.includes('fetch')) {
+                        throw new Error('Keine Internetverbindung - bitte Netzwerk prüfen');
+                    }
+                    throw testError;
                 }
                 
                 showNotification('Lade von GitHub...', 'info');
@@ -669,7 +796,16 @@
                 
             } catch (error) {
                 console.error('GitHub Download Error:', error);
-                showNotification(`GitHub Fehler: ${error.message}`, 'error');
+                
+                let userMessage = error.message;
+                if (error.message.includes('Failed to fetch')) {
+                    userMessage = 'Keine Internetverbindung oder GitHub nicht erreichbar';
+                } else if (error.message.includes('NetworkError')) {
+                    userMessage = 'Netzwerkfehler - bitte Verbindung prüfen';
+                }
+                
+                showNotification(`GitHub Fehler: ${userMessage}`, 'error');
+                updateSyncStatus('❌ Sync fehlgeschlagen');
             }
         }
 
@@ -1683,5 +1819,5 @@
             }
         });
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3c5b091e8dc91',t:'MTc1OTczOTE2OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3ce6124165c98',t:'MTc1OTczOTUyNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
