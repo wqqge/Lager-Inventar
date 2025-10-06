@@ -189,6 +189,10 @@
                     <div class="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
                         <input type="text" id="search-inventory" placeholder="Artikel suchen..." 
                                class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 md:flex-none">
+                        <input type="file" id="excel-upload" accept=".xlsx,.xls,.csv" style="display: none;" onchange="importExcel(event)">
+                        <button onclick="document.getElementById('excel-upload').click()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+                            📤 Excel Import
+                        </button>
                         <button onclick="exportInventory()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
                             📥 Export CSV
                         </button>
@@ -984,21 +988,30 @@
                         showNotification(`Artikel "${item.name}" aktualisiert`, 'success');
                     }
                 } else {
-                    if (inventory.find(item => item.barcode === formData.barcode)) {
-                        showNotification('Ein Artikel mit diesem Barcode existiert bereits!', 'error');
-                        return;
+                    const existingItem = inventory.find(item => item.barcode === formData.barcode);
+                    if (existingItem) {
+                        const updateExisting = confirm(`Artikel mit Barcode ${formData.barcode} existiert bereits:\n"${existingItem.name}"\n\nMöchten Sie den bestehenden Artikel aktualisieren?`);
+                        if (updateExisting) {
+                            Object.assign(existingItem, formData);
+                            existingItem.image = getCategoryEmoji(formData.category);
+                            saveInventory();
+                            updateAllViews();
+                            showNotification(`Artikel "${existingItem.name}" aktualisiert`, 'success');
+                        } else {
+                            return;
+                        }
+                    } else {
+                        const newItem = {
+                            id: Date.now() + Math.random(),
+                            ...formData,
+                            image: getCategoryEmoji(formData.category)
+                        };
+                        
+                        inventory.push(newItem);
+                        saveInventory();
+                        updateAllViews();
+                        showNotification(`Artikel "${newItem.name}" hinzugefügt`, 'success');
                     }
-                    
-                    const newItem = {
-                        id: Date.now() + Math.random(),
-                        ...formData,
-                        image: getCategoryEmoji(formData.category)
-                    };
-                    
-                    inventory.push(newItem);
-                    saveInventory();
-                    updateAllViews();
-                    showNotification(`Artikel "${newItem.name}" hinzugefügt`, 'success');
                 }
                 
                 // Reset form
@@ -1145,6 +1158,101 @@
             }
         }
 
+        function importExcel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            showNotification('Excel-Datei wird verarbeitet...', 'info');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    
+                    if (jsonData.length === 0) {
+                        showNotification('Excel-Datei ist leer', 'error');
+                        return;
+                    }
+                    
+                    let importedCount = 0;
+                    let updatedCount = 0;
+                    let errorCount = 0;
+                    
+                    jsonData.forEach((row, index) => {
+                        try {
+                            // Flexible Spaltenerkennung
+                            const name = row.Name || row.name || row.Artikelname || row.artikel || row.Artikel || '';
+                            const barcode = String(row.Barcode || row.barcode || row.EAN || row.ean || row.Code || row.code || '').trim();
+                            const quantity = parseInt(row.Anzahl || row.anzahl || row.Menge || row.menge || row.Bestand || row.bestand || row.Quantity || row.quantity || 0);
+                            const price = parseFloat(row.Preis || row.preis || row.Price || row.price || 0);
+                            const category = row.Kategorie || row.kategorie || row.Category || row.category || 'Sonstiges';
+                            const minStock = parseInt(row.Mindestbestand || row.mindestbestand || row.MinStock || row.minstock || 5);
+                            const description = row.Beschreibung || row.beschreibung || row.Description || row.description || '';
+                            
+                            if (!name || !barcode) {
+                                console.warn(`Zeile ${index + 2}: Name oder Barcode fehlt`);
+                                errorCount++;
+                                return;
+                            }
+                            
+                            const existingItem = inventory.find(item => item.barcode === barcode);
+                            
+                            if (existingItem) {
+                                // Artikel aktualisieren
+                                existingItem.name = name;
+                                existingItem.quantity = quantity;
+                                existingItem.price = price;
+                                existingItem.category = category;
+                                existingItem.minStock = minStock;
+                                existingItem.description = description;
+                                existingItem.image = getCategoryEmoji(category);
+                                updatedCount++;
+                            } else {
+                                // Neuen Artikel hinzufügen
+                                const newItem = {
+                                    id: Date.now() + Math.random() + index,
+                                    name: name,
+                                    barcode: barcode,
+                                    quantity: quantity,
+                                    price: price,
+                                    category: category,
+                                    minStock: minStock,
+                                    description: description,
+                                    image: getCategoryEmoji(category)
+                                };
+                                inventory.push(newItem);
+                                importedCount++;
+                            }
+                        } catch (error) {
+                            console.error(`Fehler in Zeile ${index + 2}:`, error);
+                            errorCount++;
+                        }
+                    });
+                    
+                    saveInventory();
+                    updateAllViews();
+                    
+                    let message = `Excel Import abgeschlossen!\n`;
+                    if (importedCount > 0) message += `✅ ${importedCount} neue Artikel hinzugefügt\n`;
+                    if (updatedCount > 0) message += `🔄 ${updatedCount} Artikel aktualisiert\n`;
+                    if (errorCount > 0) message += `⚠️ ${errorCount} Fehler`;
+                    
+                    showNotification(message.trim(), importedCount > 0 || updatedCount > 0 ? 'success' : 'error');
+                    
+                } catch (error) {
+                    console.error('Excel import error:', error);
+                    showNotification('Fehler beim Lesen der Excel-Datei', 'error');
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+            event.target.value = ''; // Reset file input
+        }
+
         function exportInventory() {
             try {
                 const csvContent = "data:text/csv;charset=utf-8," 
@@ -1244,5 +1352,5 @@
             }
         });
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9895cfef339dd7d5',t:'MTc1OTU5Mjc4OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3919be0853a6e',t:'MTc1OTczNzAzNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
