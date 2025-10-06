@@ -1218,27 +1218,17 @@
                     }
                 }
                 
-                // Reset form komplett
+                // Reset form komplett mit verbesserter Fehlerbehandlung
                 setTimeout(() => {
-                    this.reset();
-                    delete this.dataset.editId;
-                    
-                    // Alle Felder explizit leeren
-                    const fields = ['item-name', 'item-barcode', 'item-quantity', 'item-price', 'item-min-stock', 'item-description'];
-                    fields.forEach(fieldId => {
-                        const field = document.getElementById(fieldId);
-                        if (field) field.value = '';
-                    });
-                    
-                    // Kategorie zurücksetzen
-                    const categoryField = document.getElementById('item-category');
-                    if (categoryField) categoryField.value = 'Raketen';
-                    
-                    // Button zurücksetzen
-                    const submitBtn = this.querySelector('button[type="submit"]');
-                    if (submitBtn) {
-                        submitBtn.textContent = '➕ Artikel hinzufügen';
-                        submitBtn.className = 'bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors';
+                    try {
+                        resetEditForm();
+                        console.log('✅ Formular erfolgreich zurückgesetzt');
+                    } catch (resetError) {
+                        console.error('Fehler beim Zurücksetzen des Formulars:', resetError);
+                        // Fallback: Seite neu laden wenn Reset fehlschlägt
+                        if (confirm('Formular konnte nicht zurückgesetzt werden. Seite neu laden?')) {
+                            location.reload();
+                        }
                     }
                 }, 100);
                 
@@ -1333,54 +1323,147 @@
         }
 
         function editItem(itemId) {
-            const item = inventory.find(item => item.id === itemId);
-            if (!item) {
-                showNotification('Artikel nicht gefunden', 'error');
-                return;
+            try {
+                // Sicherheitsprüfung für itemId
+                if (!itemId) {
+                    showNotification('Ungültige Artikel-ID', 'error');
+                    return;
+                }
+                
+                const item = inventory.find(item => item.id == itemId);
+                if (!item) {
+                    showNotification('Artikel nicht gefunden - möglicherweise bereits gelöscht', 'error');
+                    console.error('Item not found for ID:', itemId, 'Available items:', inventory.map(i => i.id));
+                    return;
+                }
+                
+                console.log('🔧 Bearbeite Artikel:', item);
+                
+                // Zuerst zum Tab wechseln
+                showTab('add-item');
+                
+                // Mehrere Versuche für robuste Formularfüllung
+                let attempts = 0;
+                const maxAttempts = 5;
+                
+                function fillFormFields() {
+                    attempts++;
+                    
+                    const form = document.getElementById('add-item-form');
+                    const nameField = document.getElementById('item-name');
+                    const barcodeField = document.getElementById('item-barcode');
+                    const quantityField = document.getElementById('item-quantity');
+                    const priceField = document.getElementById('item-price');
+                    const categoryField = document.getElementById('item-category');
+                    const minStockField = document.getElementById('item-min-stock');
+                    const descriptionField = document.getElementById('item-description');
+                    const submitBtn = form?.querySelector('button[type="submit"]');
+                    
+                    // Prüfen ob alle Elemente verfügbar sind
+                    const allFieldsReady = form && nameField && barcodeField && quantityField && 
+                                         priceField && categoryField && minStockField && 
+                                         descriptionField && submitBtn;
+                    
+                    if (!allFieldsReady && attempts < maxAttempts) {
+                        console.log(`Versuch ${attempts}: Formularfelder noch nicht bereit, wiederhole...`);
+                        setTimeout(fillFormFields, 50 * attempts); // Exponential backoff
+                        return;
+                    }
+                    
+                    if (!allFieldsReady) {
+                        console.error('Formularfelder konnten nicht gefunden werden nach', maxAttempts, 'Versuchen');
+                        showNotification('Formular konnte nicht geladen werden - bitte Seite neu laden', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        // Zuerst Form zurücksetzen um sauberen Zustand zu gewährleisten
+                        form.reset();
+                        delete form.dataset.editId;
+                        
+                        // Dann mit Artikeldaten füllen
+                        nameField.value = String(item.name || '');
+                        barcodeField.value = String(item.barcode || '');
+                        quantityField.value = String(item.quantity || 0);
+                        priceField.value = String(item.price || 0);
+                        categoryField.value = String(item.category || 'Sonstiges');
+                        minStockField.value = String(item.minStock || 0);
+                        descriptionField.value = String(item.description || '');
+                        
+                        // Edit-Modus aktivieren
+                        form.dataset.editId = String(itemId);
+                        
+                        // Button für Bearbeitung anpassen
+                        submitBtn.textContent = '✏️ Artikel aktualisieren';
+                        submitBtn.className = 'bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 transition-colors';
+                        
+                        // Zusätzlichen Abbrechen-Button hinzufügen
+                        let cancelBtn = form.querySelector('.cancel-edit-btn');
+                        if (!cancelBtn) {
+                            cancelBtn = document.createElement('button');
+                            cancelBtn.type = 'button';
+                            cancelBtn.className = 'cancel-edit-btn bg-gray-500 text-white px-4 py-3 rounded-lg hover:bg-gray-600 transition-colors ml-3';
+                            cancelBtn.textContent = '❌ Abbrechen';
+                            cancelBtn.onclick = function() {
+                                resetEditForm();
+                                showNotification('Bearbeitung abgebrochen', 'info');
+                            };
+                            submitBtn.parentNode.appendChild(cancelBtn);
+                        }
+                        
+                        // Fokus setzen
+                        setTimeout(() => {
+                            nameField.focus();
+                            nameField.select();
+                        }, 100);
+                        
+                        console.log('✅ Formular erfolgreich für Bearbeitung konfiguriert, Edit-ID:', form.dataset.editId);
+                        showNotification(`📝 Bearbeite: ${item.name}`, 'info');
+                        
+                    } catch (fillError) {
+                        console.error('Fehler beim Füllen der Formularfelder:', fillError);
+                        showNotification('Fehler beim Laden der Artikeldaten', 'error');
+                    }
+                }
+                
+                // Starte Formularfüllung
+                setTimeout(fillFormFields, 100);
+                
+            } catch (error) {
+                console.error('Fehler in editItem:', error);
+                showNotification('Unerwarteter Fehler beim Bearbeiten', 'error');
+            }
+        }
+        
+        function resetEditForm() {
+            const form = document.getElementById('add-item-form');
+            const submitBtn = form?.querySelector('button[type="submit"]');
+            const cancelBtn = form?.querySelector('.cancel-edit-btn');
+            
+            if (form) {
+                form.reset();
+                delete form.dataset.editId;
+                
+                // Alle Felder explizit leeren
+                const fieldIds = ['item-name', 'item-barcode', 'item-quantity', 'item-price', 'item-min-stock', 'item-description'];
+                fieldIds.forEach(fieldId => {
+                    const field = document.getElementById(fieldId);
+                    if (field) field.value = '';
+                });
+                
+                // Kategorie zurücksetzen
+                const categoryField = document.getElementById('item-category');
+                if (categoryField) categoryField.value = 'Raketen';
             }
             
-            console.log('Bearbeite Artikel:', item);
+            if (submitBtn) {
+                submitBtn.textContent = '➕ Artikel hinzufügen';
+                submitBtn.className = 'bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors';
+            }
             
-            showTab('add-item');
-            
-            // Warte kurz bis Tab gewechselt ist
-            setTimeout(() => {
-                // Alle Felder mit korrekten Werten füllen
-                const nameField = document.getElementById('item-name');
-                const barcodeField = document.getElementById('item-barcode');
-                const quantityField = document.getElementById('item-quantity');
-                const priceField = document.getElementById('item-price');
-                const categoryField = document.getElementById('item-category');
-                const minStockField = document.getElementById('item-min-stock');
-                const descriptionField = document.getElementById('item-description');
-                
-                if (nameField) nameField.value = item.name || '';
-                if (barcodeField) barcodeField.value = item.barcode || '';
-                if (quantityField) quantityField.value = item.quantity || 0;
-                if (priceField) priceField.value = item.price || 0;
-                if (categoryField) categoryField.value = item.category || 'Sonstiges';
-                if (minStockField) minStockField.value = item.minStock || 0;
-                if (descriptionField) descriptionField.value = item.description || '';
-                
-                // Form für Bearbeitung konfigurieren
-                const form = document.getElementById('add-item-form');
-                const submitBtn = form?.querySelector('button[type="submit"]');
-                
-                if (form) {
-                    form.dataset.editId = itemId;
-                    console.log('Edit ID gesetzt:', itemId);
-                }
-                
-                if (submitBtn) {
-                    submitBtn.textContent = '✏️ Artikel aktualisieren';
-                    submitBtn.className = 'bg-orange-600 text-white px-6 py-3 rounded-lg hover:bg-orange-700 transition-colors';
-                }
-                
-                // Fokus auf Name-Feld setzen
-                if (nameField) nameField.focus();
-                
-                showNotification(`Bearbeite: ${item.name}`, 'info');
-            }, 100);
+            if (cancelBtn) {
+                cancelBtn.remove();
+            }
         }
 
         function deleteItem(itemId) {
@@ -1391,26 +1474,81 @@
                     return;
                 }
                 
-                const confirmMessage = `Artikel wirklich löschen?\n\n` +
-                    `Name: ${item.name}\n` +
+                // Erweiterte Bestätigung mit mehreren Optionen
+                const itemValue = ((item.quantity || 0) * (item.price || 0)).toFixed(2);
+                const confirmMessage = `🗑️ ARTIKEL LÖSCHEN\n\n` +
+                    `${item.image || '📦'} ${item.name}\n` +
                     `Barcode: ${item.barcode}\n` +
-                    `Bestand: ${item.quantity || 0}\n` +
-                    `Wert: €${((item.quantity || 0) * (item.price || 0)).toFixed(2)}`;
+                    `Bestand: ${item.quantity || 0} Stück\n` +
+                    `Einzelpreis: €${(item.price || 0).toFixed(2)}\n` +
+                    `Gesamtwert: €${itemValue}\n` +
+                    `Kategorie: ${item.category || 'Sonstiges'}\n\n` +
+                    `⚠️ ACHTUNG: Diese Aktion kann nicht rückgängig gemacht werden!\n\n` +
+                    `Artikel wirklich unwiderruflich löschen?`;
+                
+                // Doppelte Bestätigung für wertvolle Artikel
+                const needsDoubleConfirm = (item.quantity || 0) > 10 || (item.price || 0) > 20 || parseFloat(itemValue) > 50;
                 
                 if (confirm(confirmMessage)) {
-                    const itemName = item.name;
-                    inventory = inventory.filter(item => item.id != itemId);
-                    
-                    if (saveInventory()) {
-                        updateAllViews();
-                        showNotification(`🗑️ Artikel "${itemName}" gelöscht`, 'success');
-                    } else {
-                        showNotification('Fehler beim Löschen des Artikels', 'error');
+                    if (needsDoubleConfirm) {
+                        const doubleConfirm = confirm(`🚨 LETZTE WARNUNG!\n\nSie löschen einen wertvollen Artikel:\n"${item.name}" (Wert: €${itemValue})\n\nSind Sie absolut sicher?`);
+                        if (!doubleConfirm) {
+                            showNotification('Löschvorgang abgebrochen', 'info');
+                            return;
+                        }
                     }
+                    
+                    // Visueller Löscheffekt
+                    const tableRow = document.querySelector(`button[onclick*="deleteItem(${itemId})"]`)?.closest('tr');
+                    if (tableRow) {
+                        tableRow.style.transition = 'all 0.3s ease';
+                        tableRow.style.backgroundColor = '#fee2e2';
+                        tableRow.style.transform = 'scale(0.95)';
+                        tableRow.style.opacity = '0.5';
+                    }
+                    
+                    // Kurze Verzögerung für visuellen Effekt
+                    setTimeout(() => {
+                        const itemName = item.name;
+                        const oldInventoryLength = inventory.length;
+                        
+                        // Artikel aus Inventar entfernen
+                        inventory = inventory.filter(item => item.id != itemId);
+                        
+                        // Überprüfen ob Artikel wirklich entfernt wurde
+                        if (inventory.length === oldInventoryLength - 1) {
+                            if (saveInventory()) {
+                                updateAllViews();
+                                showNotification(`🗑️ Artikel "${itemName}" erfolgreich gelöscht`, 'success');
+                                
+                                // Statistik-Update
+                                setTimeout(() => {
+                                    showNotification(`📊 Inventar aktualisiert: ${inventory.length} Artikel verbleibend`, 'info');
+                                }, 1500);
+                            } else {
+                                // Rollback bei Speicherfehler
+                                inventory.push(item);
+                                showNotification('❌ Fehler beim Speichern - Löschung rückgängig gemacht', 'error');
+                                updateAllViews();
+                            }
+                        } else {
+                            showNotification('❌ Artikel konnte nicht gelöscht werden', 'error');
+                            updateAllViews();
+                        }
+                    }, 300);
+                } else {
+                    showNotification('Löschvorgang abgebrochen', 'info');
                 }
             } catch (error) {
                 console.error('Error deleting item:', error);
-                showNotification('Fehler beim Löschen des Artikels', 'error');
+                showNotification('❌ Unerwarteter Fehler beim Löschen des Artikels', 'error');
+                
+                // Sicherheits-Reload bei kritischem Fehler
+                setTimeout(() => {
+                    if (confirm('Ein kritischer Fehler ist aufgetreten. Seite neu laden?')) {
+                        location.reload();
+                    }
+                }, 2000);
             }
         }
 
@@ -1819,5 +1957,5 @@
             }
         });
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3ce6124165c98',t:'MTc1OTczOTUyNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a4601e76c418c9',t:'MTc1OTc0NTQ5NC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
