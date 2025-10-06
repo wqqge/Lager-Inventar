@@ -354,7 +354,9 @@
                     version: '2.1'
                 };
                 
-                const content = btoa(JSON.stringify(data, null, 2));
+                // UTF-8 sicheres Base64 Encoding
+                const jsonString = JSON.stringify(data, null, 2);
+                const content = btoa(unescape(encodeURIComponent(jsonString)));
                 
                 // Aktuelle Datei-Info abrufen
                 let sha = null;
@@ -423,7 +425,8 @@
                 }
                 
                 const fileInfo = await response.json();
-                const content = atob(fileInfo.content);
+                // UTF-8 sicheres Base64 Decoding
+                const content = decodeURIComponent(escape(atob(fileInfo.content)));
                 const data = JSON.parse(content);
                 
                 return data;
@@ -765,15 +768,29 @@
             if (!video) return;
             
             try {
+                let lastScanTime = 0;
+                const scanCooldown = 2000; // 2 Sekunden zwischen Scans
+                
                 codeReader.decodeFromVideoDevice(null, video, (result, err) => {
                     if (result && result.text && isScanning) {
+                        const now = Date.now();
+                        if (now - lastScanTime < scanCooldown) return;
+                        
                         const barcode = String(result.text).trim();
-                        if (barcode.length >= 3) { // Mindestlänge für gültigen Barcode
+                        if (barcode.length >= 3) {
+                            lastScanTime = now;
                             const barcodeInput = document.getElementById('barcode-input');
                             if (barcodeInput) {
                                 barcodeInput.value = barcode;
                                 scanBarcode();
-                                showNotification(`Barcode gescannt: ${barcode}`, 'success');
+                                showNotification(`📱 Barcode gescannt: ${barcode}`, 'success');
+                                
+                                // Kurz pausieren nach erfolgreichem Scan
+                                setTimeout(() => {
+                                    if (isScanning) {
+                                        showNotification('Scanner bereit für nächsten Code', 'info');
+                                    }
+                                }, 1000);
                             }
                         }
                     }
@@ -872,30 +889,47 @@
 
         // Stock adjustment
         function adjustStock(itemId, change) {
-            const item = inventory.find(item => item.id === itemId);
-            if (!item) return;
-            
-            const oldQuantity = item.quantity || 0;
-            item.quantity = Math.max(0, oldQuantity + change);
-            
-            if (saveInventory()) {
-                const currentTab = document.querySelector('.tab-content:not(.hidden)');
-                if (currentTab && currentTab.id === 'scanner-tab') {
-                    const barcodeInput = document.getElementById('barcode-input');
-                    if (barcodeInput && barcodeInput.value.trim() === item.barcode) {
-                        scanBarcode();
+            try {
+                const item = inventory.find(item => item.id == itemId);
+                if (!item) {
+                    showNotification('Artikel nicht gefunden', 'error');
+                    return;
+                }
+                
+                const oldQuantity = parseInt(item.quantity) || 0;
+                const newQuantity = Math.max(0, oldQuantity + change);
+                item.quantity = newQuantity;
+                
+                console.log(`Bestand angepasst: ${item.name} von ${oldQuantity} auf ${newQuantity}`);
+                
+                if (saveInventory()) {
+                    // Scanner-Tab aktualisieren falls aktiv
+                    const currentTab = document.querySelector('.tab-content:not(.hidden)');
+                    if (currentTab && currentTab.id === 'scanner-tab') {
+                        const barcodeInput = document.getElementById('barcode-input');
+                        if (barcodeInput && barcodeInput.value.trim() === item.barcode) {
+                            setTimeout(() => scanBarcode(), 100);
+                        }
                     }
+                    
+                    updateAllViews();
+                    
+                    const action = change > 0 ? 'hinzugefügt' : 'entfernt';
+                    const amount = Math.abs(change);
+                    showNotification(`${amount}x ${action}: ${item.name} (${newQuantity} verfügbar)`, 'success');
+                    
+                    // Warnung bei niedrigem Bestand
+                    if (newQuantity <= (item.minStock || 0) && oldQuantity > (item.minStock || 0)) {
+                        setTimeout(() => {
+                            showNotification(`⚠️ Niedriger Bestand: ${item.name} (${newQuantity}/${item.minStock || 0})`, 'error');
+                        }, 1000);
+                    }
+                } else {
+                    showNotification('Fehler beim Speichern der Bestandsänderung', 'error');
                 }
-                
-                updateAllViews();
-                
-                const action = change > 0 ? 'hinzugefügt' : 'entfernt';
-                const amount = Math.abs(change);
-                showNotification(`${amount} Stück ${action}: ${item.name}`, 'success');
-                
-                if (item.quantity <= (item.minStock || 0) && oldQuantity > (item.minStock || 0)) {
-                    showNotification(`⚠️ Niedriger Bestand: ${item.name}`, 'error');
-                }
+            } catch (error) {
+                console.error('Error adjusting stock:', error);
+                showNotification('Fehler bei der Bestandsanpassung', 'error');
             }
         }
 
@@ -1048,14 +1082,29 @@
                     }
                 }
                 
-                // Reset form
-                this.reset();
-                delete this.dataset.editId;
-                const submitBtn = this.querySelector('button[type="submit"]');
-                if (submitBtn) {
-                    submitBtn.textContent = '➕ Artikel hinzufügen';
-                    submitBtn.className = 'bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors';
-                }
+                // Reset form komplett
+                setTimeout(() => {
+                    this.reset();
+                    delete this.dataset.editId;
+                    
+                    // Alle Felder explizit leeren
+                    const fields = ['item-name', 'item-barcode', 'item-quantity', 'item-price', 'item-min-stock', 'item-description'];
+                    fields.forEach(fieldId => {
+                        const field = document.getElementById(fieldId);
+                        if (field) field.value = '';
+                    });
+                    
+                    // Kategorie zurücksetzen
+                    const categoryField = document.getElementById('item-category');
+                    if (categoryField) categoryField.value = 'Raketen';
+                    
+                    // Button zurücksetzen
+                    const submitBtn = this.querySelector('button[type="submit"]');
+                    if (submitBtn) {
+                        submitBtn.textContent = '➕ Artikel hinzufügen';
+                        submitBtn.className = 'bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors';
+                    }
+                }, 100);
                 
                 showTab('inventory');
             });
@@ -1199,12 +1248,33 @@
         }
 
         function deleteItem(itemId) {
-            const item = inventory.find(item => item.id === itemId);
-            if (item && confirm(`Möchten Sie "${item.name}" wirklich löschen?`)) {
-                inventory = inventory.filter(item => item.id !== itemId);
-                saveInventory();
-                updateAllViews();
-                showNotification(`Artikel "${item.name}" gelöscht`, 'success');
+            try {
+                const item = inventory.find(item => item.id == itemId);
+                if (!item) {
+                    showNotification('Artikel nicht gefunden', 'error');
+                    return;
+                }
+                
+                const confirmMessage = `Artikel wirklich löschen?\n\n` +
+                    `Name: ${item.name}\n` +
+                    `Barcode: ${item.barcode}\n` +
+                    `Bestand: ${item.quantity || 0}\n` +
+                    `Wert: €${((item.quantity || 0) * (item.price || 0)).toFixed(2)}`;
+                
+                if (confirm(confirmMessage)) {
+                    const itemName = item.name;
+                    inventory = inventory.filter(item => item.id != itemId);
+                    
+                    if (saveInventory()) {
+                        updateAllViews();
+                        showNotification(`🗑️ Artikel "${itemName}" gelöscht`, 'success');
+                    } else {
+                        showNotification('Fehler beim Löschen des Artikels', 'error');
+                    }
+                }
+            } catch (error) {
+                console.error('Error deleting item:', error);
+                showNotification('Fehler beim Löschen des Artikels', 'error');
             }
         }
 
@@ -1613,5 +1683,5 @@
             }
         });
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3b2dc9308dc91',t:'MTc1OTczODM5OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3c5b091e8dc91',t:'MTc1OTczOTE2OS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
