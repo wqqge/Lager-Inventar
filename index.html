@@ -483,25 +483,52 @@
         let isScanning = false;
         const githubSync = new GitHubSyncManager();
 
-        // Enhanced inventory loading
+        // Enhanced inventory loading with better error handling
         let inventory = [];
-        try {
-            const savedInventory = localStorage.getItem('pyrotechnikInventory');
-            if (savedInventory && savedInventory !== 'undefined' && savedInventory !== 'null') {
-                const parsed = JSON.parse(savedInventory);
-                if (Array.isArray(parsed)) {
-                    inventory = parsed;
+        
+        function initializeInventory() {
+            try {
+                const savedInventory = localStorage.getItem('pyrotechnikInventory');
+                
+                if (savedInventory && savedInventory !== 'undefined' && savedInventory !== 'null' && savedInventory.trim() !== '') {
+                    const parsed = JSON.parse(savedInventory);
+                    
+                    if (Array.isArray(parsed) && parsed.length >= 0) {
+                        // Validiere jedes Item im Array
+                        const validItems = parsed.filter(item => 
+                            item && 
+                            typeof item === 'object' && 
+                            item.id && 
+                            item.name && 
+                            item.barcode &&
+                            typeof item.quantity === 'number' &&
+                            typeof item.price === 'number'
+                        );
+                        
+                        if (validItems.length === parsed.length) {
+                            inventory = parsed;
+                            console.log(`✅ ${inventory.length} Artikel aus LocalStorage geladen`);
+                        } else {
+                            console.warn(`⚠️ ${parsed.length - validItems.length} ungültige Artikel entfernt`);
+                            inventory = validItems;
+                            saveInventory(); // Bereinigte Daten speichern
+                        }
+                    } else {
+                        throw new Error('Inventory ist kein gültiges Array');
+                    }
                 } else {
-                    throw new Error('Invalid inventory format');
+                    console.log('Keine gespeicherten Daten gefunden, lade Standarddaten');
+                    loadDefaultData();
                 }
-            } else {
+            } catch (error) {
+                console.error('Fehler beim Laden des Inventars:', error);
                 loadDefaultData();
+                showNotification('Standarddaten geladen (Fehler beim Laden)', 'info');
             }
-        } catch (error) {
-            console.error('Error loading inventory:', error);
-            loadDefaultData();
-            showNotification('Standarddaten geladen', 'info');
         }
+        
+        // Inventar initialisieren
+        initializeInventory();
 
         function loadDefaultData() {
             inventory = [
@@ -739,19 +766,26 @@
             
             try {
                 codeReader.decodeFromVideoDevice(null, video, (result, err) => {
-                    if (result && isScanning) {
-                        const barcode = result.text;
-                        const barcodeInput = document.getElementById('barcode-input');
-                        if (barcodeInput) {
-                            barcodeInput.value = barcode;
-                            scanBarcode();
-                            showNotification(`Barcode gescannt: ${barcode}`, 'success');
+                    if (result && result.text && isScanning) {
+                        const barcode = String(result.text).trim();
+                        if (barcode.length >= 3) { // Mindestlänge für gültigen Barcode
+                            const barcodeInput = document.getElementById('barcode-input');
+                            if (barcodeInput) {
+                                barcodeInput.value = barcode;
+                                scanBarcode();
+                                showNotification(`Barcode gescannt: ${barcode}`, 'success');
+                            }
                         }
+                    }
+                    
+                    if (err && err.name !== 'NotFoundException') {
+                        console.warn('Barcode scanning error:', err);
                     }
                 });
             } catch (error) {
                 console.error('Error starting barcode scanning:', error);
                 showNotification('Fehler beim Starten des Scanners', 'error');
+                stopCamera();
             }
         }
 
@@ -1167,89 +1201,300 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                    let workbook;
+                    let jsonData = [];
                     
-                    if (jsonData.length === 0) {
-                        showNotification('Excel-Datei ist leer', 'error');
+                    // Verschiedene Dateiformate unterstützen
+                    if (file.name.toLowerCase().endsWith('.csv')) {
+                        // CSV-Datei verarbeiten
+                        const csvText = e.target.result;
+                        if (!csvText || typeof csvText !== 'string') {
+                            showNotification('CSV-Datei konnte nicht gelesen werden', 'error');
+                            return;
+                        }
+                        
+                        const lines = csvText.split('\n').filter(line => line.trim());
+                        
+                        if (lines.length < 2) {
+                            showNotification('CSV-Datei muss mindestens eine Kopfzeile und eine Datenzeile haben', 'error');
+                            return;
+                        }
+                        
+                        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim()).filter(h => h);
+                        if (headers.length === 0) {
+                            showNotification('Keine gültigen Spaltenüberschriften gefunden', 'error');
+                            return;
+                        }
+                        
+                        jsonData = [];
+                        
+                        for (let i = 1; i < lines.length; i++) {
+                            const values = lines[i].split(',').map(v => v.replace(/"/g, '').trim());
+                            const row = {};
+                            headers.forEach((header, index) => {
+                                row[header] = values[index] || '';
+                            });
+                            jsonData.push(row);
+                        }
+                    } else {
+                        // Excel-Datei verarbeiten
+                        if (!window.XLSX) {
+                            showNotification('Excel-Bibliothek nicht verfügbar', 'error');
+                            return;
+                        }
+                        
+                        const data = new Uint8Array(e.target.result);
+                        workbook = XLSX.read(data, { 
+                            type: 'array',
+                            cellDates: true,
+                            cellNF: false,
+                            cellText: false
+                        });
+                        
+                        if (!workbook || !workbook.SheetNames || workbook.SheetNames.length === 0) {
+                            showNotification('Excel-Datei enthält keine Arbeitsblätter', 'error');
+                            return;
+                        }
+                        
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        
+                        if (!worksheet) {
+                            showNotification('Arbeitsblatt konnte nicht gelesen werden', 'error');
+                            return;
+                        }
+                        
+                        const rawData = XLSX.utils.sheet_to_json(worksheet, {
+                            header: 1,
+                            defval: '',
+                            blankrows: false
+                        });
+                        
+                        // Erste Zeile als Header verwenden
+                        if (!rawData || rawData.length < 2) {
+                            showNotification('Excel-Datei muss mindestens eine Kopfzeile und eine Datenzeile haben', 'error');
+                            return;
+                        }
+                        
+                        const headers = rawData[0].filter(h => h && String(h).trim());
+                        if (headers.length === 0) {
+                            showNotification('Keine gültigen Spaltenüberschriften gefunden', 'error');
+                            return;
+                        }
+                        
+                        const dataRows = rawData.slice(1);
+                        
+                        jsonData = dataRows.map(row => {
+                            const obj = {};
+                            headers.forEach((header, index) => {
+                                obj[String(header)] = row[index] || '';
+                            });
+                            return obj;
+                        }).filter(row => Object.values(row).some(val => val && String(val).trim()));
+                    }
+                    
+                    if (!jsonData || jsonData.length === 0) {
+                        showNotification('Datei ist leer oder enthält keine gültigen Daten', 'error');
                         return;
                     }
+                    
+                    console.log('Gefundene Spalten:', Object.keys(jsonData[0]));
+                    console.log('Erste Datenzeile:', jsonData[0]);
                     
                     let importedCount = 0;
                     let updatedCount = 0;
                     let errorCount = 0;
+                    const errors = [];
                     
                     jsonData.forEach((row, index) => {
                         try {
-                            // Flexible Spaltenerkennung
-                            const name = row.Name || row.name || row.Artikelname || row.artikel || row.Artikel || '';
-                            const barcode = String(row.Barcode || row.barcode || row.EAN || row.ean || row.Code || row.code || '').trim();
-                            const quantity = parseInt(row.Anzahl || row.anzahl || row.Menge || row.menge || row.Bestand || row.bestand || row.Quantity || row.quantity || 0);
-                            const price = parseFloat(row.Preis || row.preis || row.Price || row.price || 0);
-                            const category = row.Kategorie || row.kategorie || row.Category || row.category || 'Sonstiges';
-                            const minStock = parseInt(row.Mindestbestand || row.mindestbestand || row.MinStock || row.minstock || 5);
-                            const description = row.Beschreibung || row.beschreibung || row.Description || row.description || '';
-                            
-                            if (!name || !barcode) {
-                                console.warn(`Zeile ${index + 2}: Name oder Barcode fehlt`);
+                            // Sicherheitsprüfung für row
+                            if (!row || typeof row !== 'object') {
+                                errors.push(`Zeile ${index + 2}: Ungültige Datenzeile`);
                                 errorCount++;
                                 return;
                             }
                             
-                            const existingItem = inventory.find(item => item.barcode === barcode);
+                            // Alle möglichen Spaltennamen für flexible Erkennung
+                            const nameFields = ['Name', 'name', 'Artikelname', 'artikel', 'Artikel', 'Produktname', 'Product', 'Item'];
+                            const barcodeFields = ['Barcode', 'barcode', 'EAN', 'ean', 'Code', 'code', 'SKU', 'sku'];
+                            const quantityFields = ['Anzahl', 'anzahl', 'Menge', 'menge', 'Bestand', 'bestand', 'Quantity', 'quantity', 'Stock', 'stock'];
+                            const priceFields = ['Preis', 'preis', 'Price', 'price', 'Kosten', 'kosten', 'Cost', 'cost'];
+                            const categoryFields = ['Kategorie', 'kategorie', 'Category', 'category', 'Typ', 'typ', 'Type', 'type'];
+                            const minStockFields = ['Mindestbestand', 'mindestbestand', 'MinStock', 'minstock', 'Min', 'min'];
+                            const descriptionFields = ['Beschreibung', 'beschreibung', 'Description', 'description', 'Details', 'details'];
+                            
+                            // Hilfsfunktion für sichere Feldextraktion
+                            function findFieldValue(fields, defaultValue = '') {
+                                for (const field of fields) {
+                                    if (row.hasOwnProperty(field) && row[field] !== null && row[field] !== undefined) {
+                                        const value = String(row[field]).trim();
+                                        if (value) return value;
+                                    }
+                                }
+                                return defaultValue;
+                            }
+                            
+                            // Werte aus der Zeile extrahieren
+                            const name = findFieldValue(nameFields);
+                            const barcode = findFieldValue(barcodeFields);
+                            const quantityStr = findFieldValue(quantityFields, '0');
+                            const priceStr = findFieldValue(priceFields, '0');
+                            const category = findFieldValue(categoryFields, 'Sonstiges');
+                            const minStockStr = findFieldValue(minStockFields, '5');
+                            const description = findFieldValue(descriptionFields);
+                            
+                            // Zahlen sicher konvertieren
+                            let quantity = 0;
+                            let price = 0;
+                            let minStock = 5;
+                            
+                            try {
+                                const cleanQuantity = String(quantityStr).replace(/[^\d]/g, '');
+                                quantity = cleanQuantity ? parseInt(cleanQuantity) : 0;
+                                if (isNaN(quantity) || quantity < 0) quantity = 0;
+                            } catch (e) {
+                                quantity = 0;
+                            }
+                            
+                            try {
+                                const cleanPrice = String(priceStr).replace(/[^\d.,]/g, '').replace(',', '.');
+                                price = cleanPrice ? parseFloat(cleanPrice) : 0;
+                                if (isNaN(price) || price < 0) price = 0;
+                            } catch (e) {
+                                price = 0;
+                            }
+                            
+                            try {
+                                const cleanMinStock = String(minStockStr).replace(/[^\d]/g, '');
+                                minStock = cleanMinStock ? parseInt(cleanMinStock) : 5;
+                                if (isNaN(minStock) || minStock < 0) minStock = 5;
+                            } catch (e) {
+                                minStock = 5;
+                            }
+                            
+                            // Validierung
+                            if (!name || name.length < 1) {
+                                errors.push(`Zeile ${index + 2}: Artikelname fehlt oder ist leer`);
+                                errorCount++;
+                                return;
+                            }
+                            
+                            if (!barcode || barcode.length < 3) {
+                                errors.push(`Zeile ${index + 2}: Barcode "${barcode}" fehlt oder ist zu kurz (min. 3 Zeichen)`);
+                                errorCount++;
+                                return;
+                            }
+                            
+                            // Sicherstellen dass inventory ein Array ist
+                            if (!Array.isArray(inventory)) {
+                                inventory = [];
+                            }
+                            
+                            const existingItem = inventory.find(item => item && item.barcode === barcode);
                             
                             if (existingItem) {
                                 // Artikel aktualisieren
-                                existingItem.name = name;
-                                existingItem.quantity = quantity;
-                                existingItem.price = price;
-                                existingItem.category = category;
-                                existingItem.minStock = minStock;
-                                existingItem.description = description;
-                                existingItem.image = getCategoryEmoji(category);
-                                updatedCount++;
+                                try {
+                                    existingItem.name = name;
+                                    existingItem.quantity = quantity;
+                                    existingItem.price = price;
+                                    existingItem.category = category;
+                                    existingItem.minStock = minStock;
+                                    existingItem.description = description;
+                                    existingItem.image = getCategoryEmoji(category);
+                                    updatedCount++;
+                                } catch (updateError) {
+                                    errors.push(`Zeile ${index + 2}: Fehler beim Aktualisieren - ${updateError.message}`);
+                                    errorCount++;
+                                }
                             } else {
                                 // Neuen Artikel hinzufügen
-                                const newItem = {
-                                    id: Date.now() + Math.random() + index,
-                                    name: name,
-                                    barcode: barcode,
-                                    quantity: quantity,
-                                    price: price,
-                                    category: category,
-                                    minStock: minStock,
-                                    description: description,
-                                    image: getCategoryEmoji(category)
-                                };
-                                inventory.push(newItem);
-                                importedCount++;
+                                try {
+                                    const newItem = {
+                                        id: Date.now() + Math.random() * 1000 + index,
+                                        name: name,
+                                        barcode: barcode,
+                                        quantity: quantity,
+                                        price: price,
+                                        category: category,
+                                        minStock: minStock,
+                                        description: description,
+                                        image: getCategoryEmoji(category)
+                                    };
+                                    
+                                    // Validierung des neuen Items
+                                    if (newItem.id && newItem.name && newItem.barcode) {
+                                        inventory.push(newItem);
+                                        importedCount++;
+                                    } else {
+                                        throw new Error('Unvollständige Artikeldaten');
+                                    }
+                                } catch (createError) {
+                                    errors.push(`Zeile ${index + 2}: Fehler beim Erstellen - ${createError.message}`);
+                                    errorCount++;
+                                }
                             }
                         } catch (error) {
                             console.error(`Fehler in Zeile ${index + 2}:`, error);
+                            errors.push(`Zeile ${index + 2}: ${error.message}`);
                             errorCount++;
                         }
                     });
                     
-                    saveInventory();
-                    updateAllViews();
+                    // Daten speichern und Views aktualisieren
+                    try {
+                        if (importedCount > 0 || updatedCount > 0) {
+                            const saveSuccess = saveInventory();
+                            if (saveSuccess) {
+                                updateAllViews();
+                            } else {
+                                throw new Error('Fehler beim Speichern der Daten');
+                            }
+                        }
+                    } catch (saveError) {
+                        console.error('Save error:', saveError);
+                        showNotification('Fehler beim Speichern der importierten Daten', 'error');
+                        return;
+                    }
                     
-                    let message = `Excel Import abgeschlossen!\n`;
-                    if (importedCount > 0) message += `✅ ${importedCount} neue Artikel hinzugefügt\n`;
-                    if (updatedCount > 0) message += `🔄 ${updatedCount} Artikel aktualisiert\n`;
-                    if (errorCount > 0) message += `⚠️ ${errorCount} Fehler`;
+                    // Erfolgsmeldung zusammenstellen
+                    let message = `Import abgeschlossen!`;
+                    const messageParts = [];
                     
-                    showNotification(message.trim(), importedCount > 0 || updatedCount > 0 ? 'success' : 'error');
+                    if (importedCount > 0) messageParts.push(`✅ ${importedCount} neue Artikel`);
+                    if (updatedCount > 0) messageParts.push(`🔄 ${updatedCount} aktualisiert`);
+                    if (errorCount > 0) messageParts.push(`⚠️ ${errorCount} Fehler`);
+                    
+                    if (messageParts.length > 0) {
+                        message += ' ' + messageParts.join(', ');
+                    }
+                    
+                    // Detaillierte Fehlerausgabe in Konsole
+                    if (errorCount > 0 && errors.length > 0) {
+                        console.group('📋 Import-Fehler Details:');
+                        errors.forEach(error => console.warn(error));
+                        console.groupEnd();
+                    }
+                    
+                    // Benachrichtigung anzeigen
+                    const notificationType = (importedCount > 0 || updatedCount > 0) ? 'success' : 
+                                           errorCount > 0 ? 'error' : 'info';
+                    showNotification(message, notificationType);
                     
                 } catch (error) {
-                    console.error('Excel import error:', error);
-                    showNotification('Fehler beim Lesen der Excel-Datei', 'error');
+                    console.error('Excel/CSV import error:', error);
+                    showNotification(`Fehler beim Lesen der Datei: ${error.message}`, 'error');
                 }
             };
             
-            reader.readAsArrayBuffer(file);
+            // Dateityp erkennen und entsprechend lesen
+            if (file.name.toLowerCase().endsWith('.csv')) {
+                reader.readAsText(file, 'UTF-8');
+            } else {
+                reader.readAsArrayBuffer(file);
+            }
+            
             event.target.value = ''; // Reset file input
         }
 
@@ -1352,5 +1597,5 @@
             }
         });
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3919be0853a6e',t:'MTc1OTczNzAzNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'98a3a2b4656718c9',t:'MTc1OTczNzczNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
